@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Caseload Manager</title>
+  <meta name="description" content="Offline, ADHD-friendly caseload, task and diary manager. Local data only." />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#5b21b6" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon-192.png" type="image/png" sizes="192x192" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Caseload" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Skip link for keyboard users -->
+  <a class="skip-link" href="#view">Skip to main content</a>
+
+  <div id="app" class="app">
+    <!-- Sidebar primary navigation: routes, smart lists and global controls -->
+    <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+      <div class="sidebar__head">
+        <a class="sidebar__brand" href="#/today" aria-label="Caseload home" title="Caseload">
+          <span class="brand__mark" aria-hidden="true">◧</span>
+          <span class="brand__name">Caseload</span>
+        </a>
+        <button class="sidebar__toggle" type="button" data-action="toggle-sidebar-collapse"
+                aria-label="Collapse navigation" aria-expanded="true" aria-controls="sidebar"
+                title="Collapse navigation">
+          <span class="sidebar__toggle-icon" aria-hidden="true">‹</span>
+        </button>
+      </div>
+
+      <button class="sidebar__add" data-action="new-task" title="Add task">
+        <span class="sidebar__add-icon" aria-hidden="true">＋</span>
+        <span>Add task</span>
+        <kbd class="kbd">Alt+E</kbd>
+      </button>
+
+      <nav class="side-nav" id="nav" aria-label="Main views"></nav>
+
+      <div id="side-lists"></div>
+
+      <div class="sidebar__foot">
+        <label class="side-field">
+          <span class="visually-hidden">Theme</span>
+          <select id="theme-select">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="contrast">High contrast</option>
+          </select>
+        </label>
+        <div class="side-pills">
+          <span class="pill" id="pwa-pill" title="This app keeps working offline once loaded" hidden>● Offline ready</span>
+          <span class="pill" id="storage-pill" title="Where your data is stored">Storage: …</span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" data-action="close-sidebar" hidden></div>
+
+    <div class="content">
+      <!-- Compact top bar: only shown on small screens where the sidebar is off-canvas -->
+      <header class="topbar">
+        <button class="topbar__menu" data-action="toggle-sidebar" aria-label="Toggle navigation"
+                aria-expanded="false" aria-controls="sidebar">
+          <span aria-hidden="true">☰</span>
+        </button>
+        <span class="topbar__title">Caseload Manager</span>
+      </header>
+
+      <!-- Router renders the active view here -->
+      <main id="view" class="view" tabindex="-1"></main>
+    </div>
+
+    <!-- Floating quick-add task button (also Alt+E) -->
+    <button class="fab" id="fab-new-task" data-action="new-task"
+            aria-label="New task (Alt+E)" title="New task (Alt+E)">
+      <span class="fab__icon" aria-hidden="true">＋</span>
+    </button>
+
+    <!-- Overlay roots -->
+    <div id="modal-root" class="modal-root" hidden></div>
+    <div id="toast-root" class="toast-root" role="status" aria-live="polite"></div>
+
+    <!-- Patient details drawer -->
+    <div id="drawer-root" class="drawer-root" aria-hidden="true">
+      <div class="drawer-backdrop" data-action="close-drawer"></div>
+      <aside class="drawer" role="dialog" aria-label="Patient details">
+        <div id="drawer-content"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Hidden file input reused by import controls -->
+  <input type="file" id="file-input" accept=".csv,.json,text/csv,application/json" hidden />
+
+  <script src="app.js"></script>
+</body>
+</html>
