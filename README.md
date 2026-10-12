@@ -1,6 +1,6 @@
 # Caseload Manager
 
-An offline-first, ADHD-friendly caseload, task and diary manager for NHS Talking
+An offline-first, ADHD-friendly caseload, task and diary manager for Talking
 Therapies work. There is **no server and no build step** — it is a plain static
 site (HTML + CSS + vanilla JS), and all data stays in the browser on the device
 (`localStorage` only; nothing is ever uploaded).
