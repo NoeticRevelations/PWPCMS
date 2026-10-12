@@ -63,6 +63,17 @@ After adding, focus stays in the box so you can keep typing the next task.
 | **Esc** | Close the dialog without saving |
 | **Tab** / **Shift + Tab** | Cycle through fields (focus stays inside the dialog) |
 
+## Patient panel (the drawer)
+
+Opening a patient shows their details as an editable form, so you can change any value by hand and save.
+
+| Key | Action |
+| --- | --- |
+| **Enter** (in Name, Pathway, Status or Days) | Save the details |
+| **Esc** | Close the panel |
+
+Patient ID is fixed (linked tasks use it), and **Notes** has its own **Save notes** button.
+
 ## Not keyboard, but handy
 
 - **Diary (Day view):** click an empty time slot to create a 30-minute event, or click-and-drag down a column to set a custom length. Click an existing event to edit it.

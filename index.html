@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Caseload Manager</title>
   <meta name="description" content="Offline, ADHD-friendly caseload, task and diary manager. Local data only." />
+  <!-- Keeps this personal tool out of search engines (works on project pages too). Remove to allow indexing. -->
+  <meta name="robots" content="noindex" />
   <meta name="color-scheme" content="light dark" />
   <meta name="theme-color" content="#5b21b6" />
 
@@ -36,12 +38,6 @@
           <span class="sidebar__toggle-icon" aria-hidden="true">‹</span>
         </button>
       </div>
-
-      <button class="sidebar__add" data-action="new-task" title="Add task">
-        <span class="sidebar__add-icon" aria-hidden="true">＋</span>
-        <span>Add task</span>
-        <kbd class="kbd">Alt+E</kbd>
-      </button>
 
       <nav class="side-nav" id="nav" aria-label="Main views"></nav>
 
@@ -82,6 +78,7 @@
     <!-- Floating quick-add task button (also Alt+E) -->
     <button class="fab" id="fab-new-task" data-action="new-task"
             aria-label="New task (Alt+E)" title="New task (Alt+E)">
+      <span class="fab__label" aria-hidden="true">New task</span>
       <span class="fab__icon" aria-hidden="true">＋</span>
     </button>
 

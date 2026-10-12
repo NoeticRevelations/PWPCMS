@@ -37,17 +37,17 @@
   --surface-2: #eef2f5;
   --surface-3: #e2e8ed;
   --border: #d5dde3;
-  --border-strong: #b9c4cc;
+  --border-strong: #8496a2;   /* 3.06:1 on surface — meets WCAG 1.4.11 for control borders */
   --text: #14202b;
   --text-muted: #5a6b78;
-  --text-faint: #8695a1;
+  --text-faint: #616e78;      /* 4.65:1 on surface-2 — was 2.73:1 */
 
   /* Brand & semantic colours */
   --accent: #5b21b6;              /* Deep purple */
   --accent-hover: #4c1d95;
   --accent-contrast: #ffffff;
   --danger: #c0342b;
-  --warning: #b4690e;
+  --warning: #9c5a0c;             /* 4.92:1 on warning-tint text */
   --success: #2f7d32;
   --info: #2a5db0;
 
@@ -69,10 +69,10 @@
   --surface-2: #1f2a34;
   --surface-3: #27333e;
   --border: #33424e;
-  --border-strong: #45545f;
+  --border-strong: #5d6f7c;   /* 3.13:1 on surface */
   --text: #eaf0f4;
   --text-muted: #9fb0bd;
-  --text-faint: #71828f;
+  --text-faint: #8b9dab;      /* 5.22:1 on surface-2 — was 3.68:1 */
 
   --accent: #a78bfa;              /* Deep purple (dark) */
   --accent-hover: #c4b5fd;
@@ -203,17 +203,6 @@ input[readonly] { background: var(--surface-2); color: var(--text-muted); cursor
 }
 .sidebar__toggle:hover { background: var(--surface-3); color: var(--text); }
 
-.sidebar__add {
-  display: flex; align-items: center; gap: var(--space-2);
-  appearance: none; cursor: pointer;
-  border: 1px solid var(--accent); background: var(--accent); color: var(--accent-contrast);
-  border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
-  font-weight: 700; width: 100%; text-align: left;
-}
-.sidebar__add:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
-.sidebar__add-icon { font-size: 1.1em; line-height: 1; }
-.sidebar__add .kbd { margin-left: auto; background: transparent; color: inherit; border-color: currentColor; opacity: .75; }
-
 /* Sidebar nav + smart lists */
 .side-nav, #side-lists { display: flex; flex-direction: column; gap: 2px; }
 .side-group__title {
@@ -226,7 +215,7 @@ input[readonly] { background: var(--surface-2); color: var(--text-muted); cursor
   appearance: none; border: 0; background: transparent; color: var(--text-muted);
   font: inherit; font-weight: 600; text-align: left; cursor: pointer;
   padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
-  text-decoration: none; width: 100%;
+  text-decoration: none; width: 100%; min-height: 40px;
 }
 .side-link:hover { background: var(--surface-2); color: var(--text); }
 .side-link[aria-current="page"], .side-link--on { background: var(--accent-tint); color: var(--accent); }
@@ -300,6 +289,21 @@ input[readonly] { background: var(--surface-2); color: var(--text-muted); cursor
 .panel + .panel { margin-top: var(--space-3); }
 .panel__title { font-size: var(--fs-lg); margin-bottom: var(--space-2); }
 
+/* Cards carry their accent along the TOP, not the left: a tinted header band
+   that bleeds to the card edges with the title sitting inside it. */
+.panel > .panel__title:first-child {
+  margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--card-tint, var(--surface-2));
+  color: var(--card-accent, var(--text));
+  border-bottom: 1px solid var(--border);
+  border-top-left-radius: calc(var(--radius) - 1px);
+  border-top-right-radius: calc(var(--radius) - 1px);
+  font-size: var(--fs-base); font-weight: 700;
+}
+.panel > .panel__title .panel__subhead { margin: 0 0 0 var(--space-2); }
+.next-up__title { font-weight: 700; font-size: var(--fs-lg); margin-bottom: var(--space-1); }
+
 .card-grid {
   display: grid; gap: var(--space-3);
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -311,15 +315,15 @@ input[readonly] { background: var(--surface-2); color: var(--text-muted); cursor
 }
 .stat {
   background: var(--surface); border: 1px solid var(--border);
-  border-left: 4px solid var(--accent);
+  border-top: 4px solid var(--accent);
   border-radius: var(--radius); padding: var(--space-2);
   box-shadow: var(--shadow-sm);
   aspect-ratio: 1/1; display: flex; flex-direction: column;
   align-items: center; justify-content: center; text-align: center;
 }
-.stat--danger { border-left-color: var(--danger); }
-.stat--warning { border-left-color: var(--warning); }
-.stat--success { border-left-color: var(--success); }
+.stat--danger { border-top-color: var(--danger); }
+.stat--warning { border-top-color: var(--warning); }
+.stat--success { border-top-color: var(--success); }
 .stat__value { font-size: var(--fs-lg); font-weight: 700; line-height: 1.1; }
 .stat__label { color: var(--text-muted); font-size: var(--fs-sm); margin-top: var(--space-1); }
 
@@ -338,7 +342,6 @@ button.stat--compact { cursor: pointer; }
 .stat--compact .stat__value { font-size: var(--fs-lg); }
 .stat--compact .stat__label { margin-top: 0; }
 .stat--compact:hover { border-color: var(--border-strong); }
-.stat--on { box-shadow: 0 0 0 2px var(--accent); border-color: var(--accent); }
 
 .panel__subhead {
   font-size: var(--fs-sm); font-weight: 700; color: var(--text-muted);
@@ -367,6 +370,7 @@ button.stat--compact { cursor: pointer; }
 .btn--ghost { border-color: transparent; background: transparent; color: var(--text-muted); }
 .btn--ghost:hover { background: var(--surface-2); color: var(--text); }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
+.btn--sm { padding: 2px var(--space-2); font-size: var(--fs-sm); font-weight: 600; }
 
 .btn-row { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
 
@@ -379,21 +383,53 @@ button.stat--compact { cursor: pointer; }
 }
 .btn--primary .kbd { background: transparent; color: inherit; border-color: currentColor; opacity: 0.85; }
 
-/* Floating quick-add task button */
+/* Floating quick-add task button — extends on hover to reveal its purpose */
 .fab {
   position: fixed; z-index: 30;
   right: clamp(var(--space-4), 4vw, var(--space-6));
   bottom: clamp(var(--space-4), 4vw, var(--space-6));
-  width: 56px; height: 56px; border-radius: 50%;
-  border: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: flex-end;
+  height: 56px; padding: 0;
+  border: none; border-radius: 999px; cursor: pointer;
   background: var(--accent); color: var(--accent-contrast);
-  display: grid; place-items: center;
   box-shadow: var(--shadow-lg);
-  transition: transform .12s ease, background .12s ease;
+  transition: transform .2s ease, background .15s ease, box-shadow .25s ease;
 }
-.fab:hover { background: var(--accent-hover); transform: translateY(-2px); }
+.fab:hover, .fab:focus-visible {
+  background: var(--accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, .3);
+}
 .fab:active { transform: translateY(0); }
-.fab__icon { font-size: 1.9rem; line-height: 1; }
+/* Soft pulse ring that appears with the label */
+.fab::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  box-shadow: 0 0 0 0 var(--accent-tint); pointer-events: none;
+  transition: box-shadow .3s ease;
+}
+.fab:hover::after, .fab:focus-visible::after { box-shadow: 0 0 0 7px var(--accent-tint); }
+
+.fab__label {
+  max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap;
+  text-indent: var(--space-4);
+  font-weight: 700; font-size: var(--fs-base);
+  transition: max-width .3s cubic-bezier(.2, .8, .2, 1), opacity .2s ease, padding-right .3s ease;
+}
+.fab:hover .fab__label, .fab:focus-visible .fab__label {
+  max-width: 8rem; opacity: 1; padding-right: var(--space-3);
+}
+.fab__icon {
+  flex: none; width: 56px; height: 56px;
+  display: grid; place-items: center; font-size: 1.9rem; line-height: 1;
+}
+.fab:hover .fab__icon, .fab:focus-visible .fab__icon {
+  animation: fab-pop .5s cubic-bezier(.2, .9, .3, 1.3);
+}
+@keyframes fab-pop {
+  0%   { transform: scale(1) rotate(0deg); }
+  50%  { transform: scale(1.3) rotate(90deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
 
 /* ---- Empty states ------------------------------------------------- */
 .empty {
@@ -413,12 +449,12 @@ button.stat--compact { cursor: pointer; }
 }
 .toast {
   background: var(--surface); border: 1px solid var(--border);
-  border-left: 4px solid var(--accent);
+  border-top: 4px solid var(--accent);
   padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm);
   box-shadow: var(--shadow-lg); animation: toast-in .18s ease;
 }
-.toast--error { border-left-color: var(--danger); }
-.toast--success { border-left-color: var(--success); }
+.toast--error { border-top-color: var(--danger); }
+.toast--success { border-top-color: var(--success); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
 
 /* ---- Modal -------------------------------------------------------- */
@@ -456,12 +492,15 @@ button.stat--compact { cursor: pointer; }
 .task-row--overdue .task-row__meta { color: var(--danger); font-weight: 600; }
 
 .task-row__check {
+  position: relative;
   flex: none; width: 21px; height: 21px; border-radius: 3px;
   border: 2px solid var(--border-strong); background: transparent;
   color: var(--text-muted); cursor: pointer; font-size: 0.78rem;
   line-height: 1; display: grid; place-items: center;
 }
 .task-row__check:hover { border-color: var(--accent); color: var(--accent); }
+/* Expand the clickable area without changing the 21px visual (WCAG 2.5.8). */
+.task-row__check::after { content: ""; position: absolute; inset: -11px; border-radius: 6px; }
 
 /* Patient name always sits above the task title */
 .task-row__patient {
@@ -471,12 +510,19 @@ button.stat--compact { cursor: pointer; }
 .task-row__title { font-weight: 600; }
 .task-row__meta { margin-left: auto; color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; }
 
-/* Colour tag swatch used for patients */
+/* Colour tag swatch used for patients — shape + colour so it reads in greyscale */
 .tag {
-  flex: none; width: 12px; height: 12px; border-radius: 50%;
+  flex: none; display: inline-block; vertical-align: middle;
+  width: 13px; height: 13px; border-radius: 50%;
   background: var(--tag, var(--accent));
-  box-shadow: 0 0 0 2px var(--surface);
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, .45));
 }
+.tag--custom, .tag--circle { border-radius: 50%; }
+.tag--square { border-radius: 2px; }
+.tag--diamond { border-radius: 2px; transform: rotate(45deg) scale(.9); }
+.tag--triangle { border-radius: 0; clip-path: polygon(50% 4%, 100% 100%, 0 100%); }
+.tag--star { border-radius: 0; clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+.tag-wrap, .id-wrap { display: inline-flex; align-items: center; gap: var(--space-1); }
 
 /* ---- Data table --------------------------------------------------- */
 .data-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
@@ -635,6 +681,61 @@ button.stat--compact { cursor: pointer; }
 
 .row-actions { position: relative; text-align: right; white-space: nowrap; }
 
+/* ---- Caseload table: tighter, content-hugging columns -------------- */
+/* Wide panels used to spread equal blank space between every pair of columns.
+   Now every data column hugs its value and the trailing filler column absorbs
+   the spare width, so the columns sit tight together and all the empty space
+   falls after the row menu at the end of each row. */
+.table-panel .data-table th,
+.table-panel .data-table td { padding: var(--space-1) var(--space-2); }
+.table-panel .data-table th:first-child,
+.table-panel .data-table td:first-child { padding-left: var(--space-3); }
+.table-panel .data-table thead th:not(.col-tail),
+.table-panel .data-table tbody tr.caseload-row td:not(.row-tail) {
+  width: 1px;
+  white-space: nowrap;
+}
+.table-panel .data-table .col-tail,
+.table-panel .data-table .row-tail { width: 100%; padding: 0; }
+/* Keep the row menu aligned to the right edge of its own (now narrow) column. */
+.table-panel .data-table .row-actions { text-align: right; }
+/* Tasks can hold a wrapping list, so let that one column breathe vertically. */
+.table-panel .data-table tbody tr.caseload-row td:nth-child(5) {
+  white-space: normal;
+  min-width: 9rem;
+}
+
+/* ---- Caseload: fill the screen and scroll the rows ------------------ */
+/* A long caseload shouldn't grow the page: the view fills the viewport, the
+   panel frame (and its sticky header) stay put, and only the rows scroll. */
+.view--caseload {
+  flex: none; height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column;
+}
+.view--caseload .view__head,
+.view--caseload .caseload-controls { flex: none; }
+.view--caseload #caseload-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+}
+/* Table mode: keep the panel frame fixed and scroll just the row area. The
+   panel hugs a short list, but never grows past the space available. */
+.view--caseload-table #caseload-body { overflow: auto; display: flex; flex-direction: column; }
+.view--caseload-table .table-panel {
+  flex: 0 1 auto; max-height: 100%; min-height: 0;
+  display: flex; flex-direction: column;
+}
+.caseload-table-scroll { flex: 1 1 auto; min-height: 6rem; overflow: auto; }
+/* Sticky header (border drawn with an inset shadow so it survives scrolling). */
+.caseload-table-scroll .data-table thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+@media (max-width: 860px) {
+  /* Leave room for the sticky mobile topbar. */
+  .view--caseload { height: calc(100dvh - 56px); }
+}
+
 /* ---- Collapsible per-patient task list (Caseload) ----------------- */
 .row-tasks { vertical-align: top; }
 .caseload-row td { vertical-align: top; }
@@ -662,8 +763,9 @@ button.stat--compact { cursor: pointer; }
 
 /* Context menu */
 .row-menu {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 40;
-  min-width: 220px; background: var(--surface); border: 1px solid var(--border);
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 60;
+  min-width: 220px; max-height: calc(100dvh - 1rem); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: var(--space-2);
 }
 .row-menu__label {
@@ -698,11 +800,28 @@ button.stat--compact { cursor: pointer; }
   border-radius: var(--radius); padding: var(--space-4); box-shadow: var(--shadow-sm);
   display: flex; flex-direction: column; gap: var(--space-2);
 }
-/* Colour-coded card: the chosen colour tints the whole card */
+/* Colour-coded card: the chosen colour tints the card and forms a header band
+   across the top (accent on top, not on the left). */
 .patient-card--tagged {
   background: var(--surface);
-  background: color-mix(in srgb, var(--tag) 10%, var(--surface));
-  border-left: 5px solid var(--tag);
+  background: color-mix(in srgb, var(--tag) 9%, var(--surface));
+}
+/* Header band, on every patient card — tinted by the tag colour when set. */
+.patient-card > .patient-card__top {
+  margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) 0;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  border-top-left-radius: calc(var(--radius) - 1px);
+  border-top-right-radius: calc(var(--radius) - 1px);
+}
+.patient-card--tagged > .patient-card__top {
+  background: color-mix(in srgb, var(--tag) 18%, var(--surface));
+  border-bottom-color: color-mix(in srgb, var(--tag) 32%, var(--border));
+}
+.patient-card--overdue > .patient-card__top {
+  border-top-left-radius: calc(var(--radius) - 4px);
+  border-top-right-radius: calc(var(--radius) - 4px);
 }
 .patient-card--breach { border-color: var(--danger); box-shadow: 0 0 0 2px var(--danger-tint) inset, var(--shadow); }
 .patient-card--overdue { border-top: 4px solid var(--danger); }
@@ -740,7 +859,7 @@ button.stat--compact { cursor: pointer; }
 .drawer__head--tagged {
   background: var(--surface-2);
   background: color-mix(in srgb, var(--tag) 10%, var(--surface-2));
-  border-left: 5px solid var(--tag);
+  border-top: 5px solid var(--tag);
 }
 .drawer__head-row { display: flex; align-items: center; gap: var(--space-3); }
 .drawer__title { font-size: var(--fs-xl); margin-right: auto; }
@@ -759,6 +878,8 @@ button.stat--compact { cursor: pointer; }
 /* ---- Quick task form ---------------------------------------------- */
 .task-form { display: flex; flex-direction: column; gap: var(--space-4); }
 .task-form label { display: flex; flex-direction: column; gap: var(--space-1); font-weight: 600; }
+/* Read-only values shown inside a form (e.g. the fixed patient ID). */
+.task-form input[readonly] { background: var(--surface-2); color: var(--text-muted); }
 .task-form input, .task-form select {
   background: var(--surface); color: var(--text); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font-weight: 400;
@@ -793,21 +914,76 @@ button.stat--compact { cursor: pointer; }
 .task-row__actions { flex: none; display: flex; gap: var(--space-1); }
 .due-overdue { color: var(--danger); font-weight: 700; }
 
-/* Toned section panels */
-.panel--danger  { border-left: 4px solid var(--danger); }
-.panel--warning { border-left: 4px solid var(--warning); }
-.panel--success { border-left: 4px solid var(--success); }
-.panel--accent  { border-left: 4px solid var(--accent); }
+/* Toned section panels — the tone now colours the top header band. */
+.panel--danger  { --card-accent: var(--danger);  --card-tint: var(--danger-tint); }
+.panel--warning { --card-accent: var(--warning); --card-tint: var(--warning-tint); }
+.panel--success { --card-accent: var(--success); --card-tint: var(--success-tint); }
+.panel--accent  { --card-accent: var(--accent);  --card-tint: var(--accent-tint); }
 
 /* Today's-plan time budget bar */
 .plan-bar {
-  height: 10px; border-radius: 999px; background: var(--surface-3);
+  display: flex; height: 10px; border-radius: 999px; background: var(--surface-3);
   overflow: hidden; margin-bottom: var(--space-2);
 }
 .plan-bar__fill {
   height: 100%; background: var(--accent); border-radius: 999px;
   transition: width .2s ease;
 }
+/* Segments for the Today plan bar: diary bookings + planned tasks. */
+.plan-bar__seg { height: 100%; transition: width .2s ease; }
+.plan-bar__seg--booked { background: var(--info); }
+.plan-bar__seg--planned { background: var(--accent); }
+/* Inline colour keys in the "Today's plan" caption. */
+.plan-key {
+  display: inline-block; width: .7em; height: .7em; border-radius: 2px;
+  margin-right: var(--space-1); vertical-align: baseline;
+}
+.plan-key--planned { background: var(--accent); }
+.plan-key--booked { background: var(--info); }
+
+/* Today: slimline schedule line — coloured booking bars on a thin line,
+   time labels underneath, plus a live "now" marker. */
+.schedule { margin-bottom: var(--space-3); }
+.schedule__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-2); margin-bottom: var(--space-1);
+}
+.schedule__title { font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
+.schedule__range { font-size: var(--fs-sm); color: var(--text-muted); }
+
+.timeline { position: relative; padding-top: 24px; }
+.timeline__line {
+  position: relative; height: 8px; border-radius: 999px; background: var(--surface-3);
+}
+.timeline__bar {
+  position: absolute; top: 0; bottom: 0; z-index: 1; min-width: 4px;
+  padding: 0; border: 0; border-radius: 999px; cursor: pointer;
+}
+.timeline__bar:hover { filter: brightness(1.08); }
+.timeline__bar--clinical { background: var(--accent); }
+.timeline__bar--admin { background: var(--warning); }
+.timeline__bar--non-clinical { background: var(--success); }
+.timeline__now {
+  position: absolute; top: -6px; bottom: -4px; width: 2px; z-index: 2;
+  background: var(--danger); border-radius: 2px;
+}
+.timeline__now::before {
+  content: ""; position: absolute; top: -4px; left: 50%;
+  width: 8px; height: 8px; margin-left: -4px; border-radius: 50%;
+  background: var(--danger);
+}
+.timeline__now-label {
+  position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
+  padding: 0 4px; border-radius: 6px; background: var(--danger); color: #fff;
+  font-size: 0.7rem; font-weight: 700; line-height: 1.3; white-space: nowrap;
+}
+.timeline__axis { position: relative; height: 14px; margin-top: 4px; }
+.timeline__axis-label {
+  position: absolute; top: 0; transform: translateX(-50%);
+  font-size: 0.7rem; color: var(--text-muted); white-space: nowrap;
+}
+.timeline__axis-label--first { transform: none; }
+.timeline__axis-label--last { transform: translateX(-100%); }
 
 /* Priority column in the caseload table */
 .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -882,24 +1058,49 @@ input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
   font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap;
 }
 .diary-track { position: relative; border-left: 1px solid var(--border); }
+.diary-now-line {
+  position: absolute; left: 0; right: 0; height: 0; z-index: 4;
+  border-top: 2px solid var(--danger); pointer-events: none;
+}
+.diary-now-line::before {
+  content: ''; position: absolute; left: -4px; top: -4px;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--danger);
+}
+.diary-now-line__label {
+  position: absolute; right: 2px; top: -9px;
+  background: var(--danger); color: #fff; font-size: .62rem; font-weight: 700;
+  padding: 0 4px; border-radius: 3px; letter-spacing: .02em;
+}
 .diary-slot {
-  position: absolute; left: 0; right: 0; height: 24px;
+  position: absolute; left: 0; right: 0;
   border: 0; border-bottom: 1px solid var(--border); background: transparent;
   padding: 0; cursor: pointer;
 }
 .diary-slot:hover { background: var(--surface-2); }
 .diary-slot--active { background: var(--accent-tint); }
 
+.diary-hover {
+  position: absolute; left: 0; right: 0; height: 0; z-index: 5;
+  border-top: 1px dashed var(--accent); pointer-events: none; opacity: .9;
+}
+.diary-hover__label {
+  position: absolute; left: 3px; top: -8px;
+  background: var(--accent); color: var(--accent-contrast);
+  font-size: .62rem; font-weight: 700; letter-spacing: .02em;
+  padding: 0 4px; border-radius: 3px; white-space: nowrap;
+}
+
 .diary-event {
   position: absolute; left: var(--space-2); right: var(--space-1); z-index: 2;
   display: flex; flex-direction: column; justify-content: center; gap: 1px;
   text-align: left; font: inherit; cursor: pointer; overflow: hidden;
-  border: 1px solid var(--border-strong); border-left: 4px solid var(--accent);
+  min-height: 20px;
+  border: 1px solid var(--border-strong); border-top: 4px solid var(--accent);
   border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2);
   background: var(--accent-tint); color: var(--text);
 }
-.diary-event--admin { border-left-color: var(--warning); background: var(--warning-tint); }
-.diary-event--non-clinical { border-left-color: var(--success); background: var(--success-tint); }
+.diary-event--admin { border-top-color: var(--warning); background: var(--warning-tint); }
+.diary-event--non-clinical { border-top-color: var(--success); background: var(--success-tint); }
 .diary-event__title { font-weight: 600; font-size: var(--fs-sm); }
 .diary-event__meta { font-size: var(--fs-sm); color: var(--text-muted); }
 .diary-event__repeat { font-size: .8em; line-height: 1; opacity: .8; }
@@ -942,7 +1143,11 @@ input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .diary-week__num { font-weight: 700; }
 .diary-week__tot { font-size: var(--fs-sm); color: var(--text-muted); min-height: 1em; }
 .diary-week__day--today { background: var(--accent-tint); }
-.diary-week__body { display: grid; grid-template-columns: 56px repeat(5, minmax(0, 1fr)); }
+.diary-week__body { display: grid; grid-template-columns: 56px repeat(5, minmax(0, 1fr)); position: relative; }
+.diary-week__now {
+  position: absolute; left: 56px; right: 0; height: 0; z-index: 4;
+  border-top: 2px solid var(--danger); pointer-events: none;
+}
 .diary-week .diary-event { left: 2px; right: 2px; padding: 2px var(--space-1); }
 
 /* Diary — month view */
@@ -1056,16 +1261,108 @@ input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
   .app.sidebar--collapsed .brand__name,
   .app.sidebar--collapsed .side-link__label,
   .app.sidebar--collapsed .side-group__title,
-  .app.sidebar--collapsed .sidebar__add > span:not(.sidebar__add-icon),
-  .app.sidebar--collapsed .sidebar__add .kbd,
   .app.sidebar--collapsed .sidebar__foot { display: none; }
   .app.sidebar--collapsed .sidebar__head { flex-direction: column; gap: var(--space-2); }
   .app.sidebar--collapsed .sidebar__brand { justify-content: center; padding-left: 0; padding-right: 0; }
-  .app.sidebar--collapsed .sidebar__add { justify-content: center; padding-left: var(--space-2); padding-right: var(--space-2); }
   .app.sidebar--collapsed .side-link { justify-content: center; padding-left: var(--space-2); padding-right: var(--space-2); }
   .app.sidebar--collapsed .side-link__count { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* ==========================================================================
+   UI density & text size (Settings > Appearance)
+   Comfy stays roomy; Compact tightens spacing so more fits on screen.
+   Text size scales the root font size, so every rem-based figure follows.
+   ========================================================================== */
+:root[data-textsize="sm"] { font-size: 14px; }
+:root[data-textsize="lg"] { font-size: 18px; }
+
+:root[data-density="compact"] {
+  --space-1: 3px;
+  --space-2: 6px;
+  --space-3: 9px;
+  --space-4: 12px;
+  --space-5: 18px;
+  --space-6: 24px;
+  /* A slightly tighter type scale. These are rem values, so the Text-size
+     setting (which scales the root font size) still multiplies on top. */
+  --fs-sm: 0.75rem;
+  --fs-base: 0.875rem;
+  --fs-lg: 1rem;
+  --fs-xl: 1.25rem;
+  --fs-2xl: 1.5625rem;
+}
+
+/* Fixed (non-tokenised) sizes that need a nudge to keep pace with the tokens. */
+:root[data-density="compact"] body { line-height: 1.4; }
+:root[data-density="compact"] .task-row__patient,
+:root[data-density="compact"] .task-row__title,
+:root[data-density="compact"] .task-row__meta { line-height: 1.2; }
+:root[data-density="compact"] h1,
+:root[data-density="compact"] h2,
+:root[data-density="compact"] h3 { line-height: 1.18; }
+:root[data-density="compact"] .view:not(.view--diary) { max-width: 1400px; }
+:root[data-density="compact"] .side-link { min-height: 34px; }
+:root[data-density="compact"] .task-row__check { width: 19px; height: 19px; }
+:root[data-density="compact"] .task-row__check::after { inset: -12px; }
+:root[data-density="compact"] .fab { height: 48px; }
+:root[data-density="compact"] .fab__icon { width: 48px; height: 48px; font-size: 1.6rem; }
+:root[data-density="compact"] .card-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+:root[data-density="compact"] .patient-grid { grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); }
+:root[data-density="compact"] .stat-grid { grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); }
+:root[data-density="compact"] .table-scroll { max-height: 320px; }
+
+/* ==========================================================================
+   Diary: fill the screen instead of living in a fixed-height window
+   The timeline is positioned in % (see diaryDayHTML / diaryWeekHTML) so it
+   scales with whatever height it is given. --diary-zoom (set from Settings /
+   the diary toolbar) grows it taller than the screen when zoomed in.
+   ========================================================================== */
+.view--diary {
+  max-width: 1600px; display: flex; flex-direction: column;
+  /* Give the diary a definite screen-height so the grid can fill it and the
+     side cards scroll instead of pushing the timeline down. */
+  flex: none; height: 100vh; height: 100dvh;
+}
+.view--diary .view__head { margin-bottom: var(--space-3); }
+.view--diary .diary-toolbar { margin-bottom: var(--space-3); }
+.view--diary .diary-layout { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+/* The side cards shouldn't dictate how tall the grid is — let them scroll. */
+.view--diary .diary-side { min-height: 0; overflow-y: auto; }
+
+/* The timeline panel is a flex column so its grid can absorb spare height. */
+.view--diary .diary-main { display: flex; flex-direction: column; min-width: 0; }
+.view--diary .diary-main > .diary-grid,
+.view--diary .diary-main > .diary-scroll {
+  flex: 1 1 auto;
+  min-height: calc(240px * var(--diary-zoom, 1));
+}
+.view--diary .diary-main--month > .diary-scroll { min-height: 240px; }
+
+.view--diary .diary-week { height: 100%; display: flex; flex-direction: column; }
+.view--diary .diary-week__head { flex: none; }
+.view--diary .diary-week__body { flex: 1 1 auto; min-height: 0; }
+.view--diary .diary-month { height: 100%; display: flex; flex-direction: column; }
+.view--diary .diary-month__head { flex: none; }
+.view--diary .diary-month__grid { flex: 1 1 auto; min-height: 0; }
+/* Let month cells stretch to fill the screen instead of forcing a fixed height. */
+.view--diary .diary-cal { min-height: 48px; }
+
+/* A taller grid than the screen scrolls with the page, so keep the inner
+   scroller horizontal-only. */
+.view--diary .diary-scroll { overflow-x: auto; }
+
+.diary-zoom { display: inline-flex; align-items: center; gap: 2px; }
+.diary-zoom__label { min-width: 3.4rem; justify-content: center; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 900px) {
+  .view--diary .diary-main > .diary-grid,
+  .view--diary .diary-main > .diary-scroll { min-height: calc(200px * var(--diary-zoom, 1)); }
+}
+@media (max-width: 860px) {
+  /* Leave room for the sticky mobile topbar. */
+  .view--diary { height: calc(100dvh - 56px); }
 }

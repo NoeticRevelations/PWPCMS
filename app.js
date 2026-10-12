@@ -46,7 +46,10 @@ function defaultState() {
       tasksView: { filter: 'all', sort: 'score', dir: 'desc', groupBy: 'patient' },  // Tasks view prefs
       diaryDate: null,                      // currently-shown diary day (null = today)
       diaryView: 'day',                     // day | week | month
+      diaryZoom: 1,                         // timeline scale (1 = fill the screen)
       sidebarCollapsed: false,              // desktop: collapse the sidebar to an icon rail
+      density: 'comfy',                     // comfy | compact  (spacing / how much fits)
+      textSize: 'md',                       // sm | md | lg      (typography scale)
     },
     meta: {
       schemaVersion: SCHEMA_VERSION,
@@ -321,6 +324,7 @@ async function save() {
 
 function render() {
   applyTheme();
+  applyDensity();
   applyLayout();
   renderView();          // also refreshes the sidebar nav + smart lists
   refreshStoragePill();
@@ -408,8 +412,21 @@ function closeSidebar() {
 
 function renderView() {
   const route = ROUTES.find((r) => r.id === currentRouteId()) || ROUTES[0];
-  $('#view').innerHTML = route.render();
+  const view = $('#view');
+  // Re-rendering rebuilds the caseload scroller, so remember where it was.
+  const prevScroll = (view.querySelector('.caseload-table-scroll') || {}).scrollTop || 0;
+  view.innerHTML = route.render();
+  // The diary gets a wider canvas and stretches to fill the screen.
+  view.classList.toggle('view--diary', route.id === 'diary');
+  // Caseload fills the screen so a long list scrolls in place, not the page.
+  view.classList.toggle('view--caseload', route.id === 'caseload');
+  view.classList.toggle('view--caseload-table', route.id === 'caseload' && state.settings.caseloadView.mode === 'table');
+  const scroller = view.querySelector('.caseload-table-scroll');
+  if (scroller && prevScroll) scroller.scrollTop = prevScroll;
   renderNav();
+  // An open caseload menu lives inside a scrolling/clipping container, so move
+  // it to the viewport layer where it can't be cut off.
+  if (caseloadMenuId) placeCaseloadMenu();
 }
 
 window.addEventListener('hashchange', () => {
@@ -437,6 +454,14 @@ function countDueToday() {
 }
 function pinnedPatients() {
   return state.patients.filter((p) => p.pinnedToToday);
+}
+
+/** Patients past the wait warning — same rule as the Caseload "Long waits" filter. */
+function longWaitPatients() {
+  const threshold = Number(state.settings.waitWarningDays) || 42;
+  return state.patients
+    .filter((p) => (Number(p.daysInStage) || 0) >= threshold)
+    .sort((a, b) => (Number(b.daysInStage) || 0) - (Number(a.daysInStage) || 0));
 }
 
 /* --------------------------------------------------------------------------
@@ -564,6 +589,17 @@ function sectionPanel(title, tone, listHTML) {
   </div>`;
 }
 
+/** Inline quick-add bar: type + Enter. Shared by the Tasks and Today views. */
+function quickAddForm() {
+  return `<form class="quick-add" data-action="quick-add-form">
+    <span class="quick-add__icon" aria-hidden="true">${icon('plus')}</span>
+    <input class="quick-add__input" id="quick-add-input" type="text" name="q"
+           placeholder="Add a task…   try “call Sam tomorrow 30m”"
+           aria-label="Quick add task" autocomplete="off" />
+    <button class="btn btn--primary" type="submit">Add</button>
+  </form>`;
+}
+
 /** A single task row. Patient is always shown first, then the task itself. */
 function taskItem(t, { allocated = false } = {}) {
   const od = isOverdue(t);
@@ -598,58 +634,219 @@ function taskItem(t, { allocated = false } = {}) {
   </li>`;
 }
 
-/** A patient row used by the Today view's focus panels (behind a stat pill). */
-function patientChip(p) {
-  const days = Number(p.daysInStage) || 0;
-  const breach = days >= (state.settings.waitWarningDays || 42);
-  return `<li class="task-row" data-patient="${esc(p.patientId)}">
-    <span class="tag"${p.colorTag ? ` style="--tag:${esc(p.colorTag)}"` : ''}></span>
+/** A tappable stat pill that opens a review modal (add its tasks to today’s plan). */
+function statPill(tone, value, label, key) {
+  return `<button type="button" class="stat stat--compact stat--${tone}"
+    data-action="open-focus" data-focus="${esc(key)}"
+    title="Review ${esc(label)}">
+    <span class="stat__value">${esc(value)}</span>
+    <span class="stat__label">${esc(label)}</span>
+  </button>`;
+}
+
+/** Active tasks behind a Today stat pill: overdue, due today, or quick wins. */
+function focusTasks(kind) {
+  if (kind === 'quick') return activeByScore().filter(isQuickWin);
+  if (kind === 'today') return activeByScore().filter(isDueToday);
+  return activeByScore().filter(isOverdue);
+}
+
+/** One task row inside the focus modal, with an add/remove-from-plan toggle. */
+function focusTaskRow(t, kind) {
+  const od = isOverdue(t);
+  const planned = plannedToday(t);
+  const p = t.patientId ? state.patients.find((x) => x.patientId === t.patientId) : null;
+  const patientLabel = p ? esc(p.name) : 'General';
+  const meta = [];
+  meta.push(`<span class="${od ? 'due-overdue' : ''}">${esc(dueLabel(t.dueDate))}</span>`);
+  if (t.estimatedMinutes) meta.push(`${esc(t.estimatedMinutes)} min`);
+  if (t.dreadScore) meta.push(`dread ${esc(t.dreadScore)}/5`);
+  if (t.priority && t.priority !== 'medium') meta.push(esc(t.priority));
+  const score = Math.round(taskScore(t));
+  const label = planned ? 'Remove from today’s plan' : 'Add to today’s plan';
+  return `<li class="task-row ${od ? 'task-row--overdue' : ''}" data-task="${esc(t.taskId)}">
+    <button class="task-row__check" data-action="toggle-task" data-id="${esc(t.taskId)}"
+            aria-label="Mark complete" title="Mark complete"></button>
     <div class="task-row__main">
-      <span class="task-row__patient">${esc(p.name)}</span>
-      <span class="task-row__meta">${esc(p.pathway || 'No pathway')} · ${days} days${breach ? ' · ⚠ breach' : ''}</span>
+      <span class="task-row__top">
+        <span class="task-row__patient">${patientLabel}</span>
+        <span class="task-row__meta">${meta.join(' · ')}</span>
+      </span>
+      <span class="task-row__title">${esc(t.title)}</span>
+    </div>
+    <span class="task-row__score" title="ADHD priority score">${score}</span>
+    <div class="task-row__actions">
+      <button class="btn btn--sm ${planned ? '' : 'btn--primary'}"
+              data-action="focus-toggle-plan" data-id="${esc(t.taskId)}" data-focus="${esc(kind)}"
+              aria-pressed="${planned}" aria-label="${label}" title="${label}">
+        ${planned ? '✓ In plan' : '＋ Add'}
+      </button>
+    </div>
+  </li>`;
+}
+
+/** A patient row with a send-to-Today toggle (Long waits modal + Today's pinned section). */
+function patientPinRow(p) {
+  const days = Number(p.daysInStage) || 0;
+  const pinned = !!p.pinnedToToday;
+  const open = tasksFor(p.patientId).filter((t) => !t.isCompleted).length;
+  const meta = [p.pathway || 'No pathway', `${days} days`, open ? `${open} open` : 'none open'];
+  const pinLabel = pinned ? 'Remove from today’s list' : 'Send to today’s list';
+  return `<li class="task-row" data-patient="${esc(p.patientId)}">
+    ${tagSwatch(p.colorTag)}
+    <div class="task-row__main">
+      <span class="task-row__top">
+        <span class="task-row__patient">${esc(p.name)}</span>
+        <span class="task-row__meta">${meta.map((s) => esc(s)).join(' · ')}</span>
+      </span>
+      <span class="task-row__title">${esc(p.patientId)}</span>
     </div>
     <div class="task-row__actions">
+      <button class="btn btn--sm ${pinned ? '' : 'btn--primary'}"
+              data-action="send-today" data-id="${esc(p.patientId)}"
+              aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">
+        ${pinned ? '✓ In today' : '＋ Today’s list'}
+      </button>
       <button class="btn--icon" data-action="open-drawer" data-id="${esc(p.patientId)}"
               aria-label="Open details" title="Open details">${icon('caseload')}</button>
     </div>
   </li>`;
 }
 
-/** A tappable stat pill that expands a focus panel in the Today view. */
-function statPill(tone, value, label, key) {
-  const on = todayFocus === key;
-  return `<button type="button" class="stat stat--compact stat--${tone}${on ? ' stat--on' : ''}"
-    data-action="today-focus" data-focus="${esc(key)}" aria-pressed="${on}"
-    title="Show ${esc(label.toLowerCase())}">
-    <span class="stat__value">${esc(value)}</span>
-    <span class="stat__label">${esc(label)}</span>
-  </button>`;
+/** Which focus modal is open, so it can be refreshed after a state change. */
+let focusModalKind = null;
+
+/**
+ * Modal opened by the Today “Overdue” / “Due today” / “Quick wins” pills: the
+ * relevant tasks with a per-task add/remove-from-plan control, plus “add all”.
+ * The “longwait” kind opens the patient-based Long waits modal instead.
+ */
+function openFocusModal(kind, focusTaskId) {
+  if (kind === 'longwait') { openLongWaitModal(focusTaskId); return; }
+  const cfg = kind === 'quick'
+    ? { label: 'Quick wins', emoji: '⚡' }
+    : kind === 'today'
+      ? { label: 'Due today', emoji: '📅' }
+      : { label: 'Overdue', emoji: '⏰' };
+  const list = focusTasks(kind);
+  const unplanned = list.filter((t) => !plannedToday(t));
+  const count = list.length;
+  const emptyText = kind === 'quick' ? 'qualifying as a quick win' : kind === 'today' ? 'due today' : 'overdue';
+  const body = `
+    <p class="modal__hint">Choose the tasks to add to today’s plan, or add them all.
+      Completed tasks drop off the list automatically.</p>
+    ${unplanned.length ? `<div class="btn-row" style="margin-bottom:var(--space-4)">
+      <button class="btn btn--primary" data-action="focus-add-all" data-focus="${esc(kind)}">
+        ＋ Add all ${unplanned.length} to today’s plan
+      </button>
+    </div>` : ''}
+    ${count
+      ? `<ul class="task-list">${list.map((t) => focusTaskRow(t, kind)).join('')}</ul>`
+      : `<p class="field-row__hint">Nothing ${emptyText} right now. 🎉</p>`}`;
+  openModal({
+    title: `${cfg.emoji} ${cfg.label} — ${count} task${count === 1 ? '' : 's'}`,
+    body,
+    actions: [{ label: 'Done', variant: 'primary', onClick: closeModal }],
+  });
+  focusModalKind = kind;
+  if (focusTaskId) {
+    const id = window.CSS && CSS.escape ? CSS.escape(focusTaskId) : focusTaskId;
+    const btn = document.querySelector(`#modal-root [data-action="focus-toggle-plan"][data-id="${id}"]`);
+    if (btn) btn.focus();
+  }
 }
 
-/** The panel revealed by a Today stat pill: the people first, then their tasks. */
-function focusListPanel(title, tone, tasks) {
-  const seen = new Set();
-  const patients = [];
-  tasks.forEach((t) => {
-    if (t.patientId && !seen.has(t.patientId)) {
-      seen.add(t.patientId);
-      const p = state.patients.find((x) => x.patientId === t.patientId);
-      if (p) patients.push(p);
-    }
+/** Modal opened by the Today “Long waits” pill: patients past the wait warning. */
+function openLongWaitModal(focusPatientId) {
+  const list = longWaitPatients();
+  const threshold = Number(state.settings.waitWarningDays) || 42;
+  const body = `
+    <p class="modal__hint">Patients at ${threshold}+ days in their current stage.
+      Send the ones you want to focus on to Today’s list.</p>
+    ${list.length
+      ? `<ul class="task-list">${list.map(patientPinRow).join('')}</ul>`
+      : '<p class="field-row__hint">No patients past the wait warning. 🎉</p>'}`;
+  openModal({
+    title: `⏳ Long waits — ${list.length} patient${list.length === 1 ? '' : 's'}`,
+    body,
+    actions: [{ label: 'Done', variant: 'primary', onClick: closeModal }],
   });
-  patients.sort((a, b) => patientScore(b.patientId) - patientScore(a.patientId));
-  const patientsHTML = patients.length
-    ? `<div class="panel__subhead">Patients</div>
-       <ul class="task-list">${patients.map(patientChip).join('')}</ul>`
-    : '';
-  const tasksHTML = tasks.length
-    ? `<div class="panel__subhead">Tasks</div>
-       <ul class="task-list">${tasks.map((t) => taskItem(t, { allocated: plannedToday(t) })).join('')}</ul>`
-    : '';
-  return `<div class="panel panel--${tone}">
-    <div class="panel__title">${esc(title)} — ${tasks.length}</div>
-    <div class="panel__list">${patientsHTML}${tasksHTML}</div>
-  </div>`;
+  focusModalKind = 'longwait';
+  if (focusPatientId) {
+    const id = window.CSS && CSS.escape ? CSS.escape(focusPatientId) : focusPatientId;
+    const btn = document.querySelector(`#modal-root [data-action="send-today"][data-id="${id}"]`);
+    if (btn) btn.focus();
+  }
+}
+
+/** Rebuild the focus modal if one is open, so it stays in sync with state changes. */
+function refreshFocusModal(focusTaskId) {
+  if (focusModalKind && !$('#modal-root').hidden) openFocusModal(focusModalKind, focusTaskId);
+}
+
+/**
+ * A slimline schedule strip for the day: a single thin line spanning the
+ * working day, with one coloured bar per diary booking (width = duration),
+ * time labels underneath, and a live "now" marker. Click a bar to edit.
+ */
+function todayTimelineHTML(iso) {
+  const events = eventsOn(iso).slice().sort((a, b) => minutesOf(a.startTime) - minutesOf(b.startTime));
+  let dayStart = minutesOf(state.settings.workdayStart);
+  let dayEnd = minutesOf(state.settings.workdayEnd);
+  events.forEach((e) => {
+    dayStart = Math.min(dayStart, minutesOf(e.startTime));
+    dayEnd = Math.max(dayEnd, minutesOf(e.endTime));
+  });
+  dayStart = Math.floor(dayStart / 60) * 60;
+  dayEnd = Math.ceil(dayEnd / 60) * 60;
+  if (dayEnd - dayStart < 60) dayEnd = dayStart + 60;
+  const span = dayEnd - dayStart;
+  const pos = (m) => ((m - dayStart) / span) * 100;
+
+  // Time labels under the line (every hour, or every two on a long day).
+  const labelStep = span > 360 ? 120 : 60;
+  const labels = [];
+  for (let m = dayStart; m <= dayEnd; m += labelStep) {
+    const edge = m === dayStart ? ' timeline__axis-label--first' : (m === dayEnd ? ' timeline__axis-label--last' : '');
+    labels.push(`<span class="timeline__axis-label${edge}" style="left:${pos(m)}%">${fmtTime(m)}</span>`);
+  }
+
+  const bars = events.map((e) => {
+    const s = minutesOf(e.startTime);
+    const en = minutesOf(e.endTime);
+    const left = pos(Math.max(dayStart, s));
+    const width = Math.max(1.2, pos(Math.min(dayEnd, en)) - left);
+    const pname = e.patientId ? patientName(e.patientId) : '';
+    const tip = `${e.title} · ${fmtTime(s)}–${fmtTime(en)}${pname ? ' · ' + pname : ''}`;
+    return `<button type="button" class="timeline__bar timeline__bar--${esc(e.category)}"
+      style="left:${left}%;width:${width}%"
+      data-action="edit-event" data-id="${esc(e.eventId)}" data-date="${esc(iso)}"
+      title="${esc(tip)}" aria-label="${esc(tip)}"></button>`;
+  }).join('');
+
+  const nowMin = nowMinutes();
+  const nowInRange = nowMin >= dayStart && nowMin <= dayEnd;
+  const nowLine = `<div class="timeline__now" data-now-line data-axis="x"
+      data-day-start="${dayStart}" data-day-end="${dayEnd}"${nowInRange ? '' : ' hidden'}
+      style="left:${pos(nowMin)}%"><span class="timeline__now-label" data-now-label>${fmtTime(nowMin)}</span></div>`;
+
+  const range = `${fmtTime(dayStart)}–${fmtTime(dayEnd)}`;
+  const count = events.length;
+  const aria = `Your diary for today, ${range}. ${count ? count + ' booking' + (count === 1 ? '' : 's') : 'No bookings yet'}.`;
+
+  return `<section class="schedule" role="group" aria-label="${esc(aria)}">
+    <div class="schedule__head">
+      <span class="schedule__title">Today’s schedule</span>
+      <span class="schedule__range">${range}</span>
+    </div>
+    <div class="timeline">
+      <div class="timeline__line">
+        ${bars}
+        ${nowLine}
+      </div>
+      <div class="timeline__axis">${labels.join('')}</div>
+    </div>
+  </section>`;
 }
 
 function renderToday() {
@@ -657,16 +854,15 @@ function renderToday() {
     <header class="view__head">
       <h1 class="view__title">Today</h1>
       <p class="view__subtitle">
-        Your day at a glance. Tap a card to see the patients and tasks behind
-        it — overdue work first, then quick wins to build momentum.
+        Your day at a glance. Tap Overdue or Quick wins to review those tasks
+        and add the ones you want to today’s plan.
       </p>
-      <div class="btn-row" style="margin-top:var(--space-3)">
-        <button class="btn btn--primary" data-action="new-task">＋ New task <kbd class="kbd">Alt</kbd><kbd class="kbd">E</kbd></button>
-      </div>
     </header>`;
 
+  const quickAdd = quickAddForm();
+
   if (!state.patients.length && !state.tasks.length) {
-    return head + emptyState({
+    return head + quickAdd + emptyState({
       icon: '📥',
       title: 'Nothing loaded yet',
       text: 'Import your IAPTUS caseload CSV or load demo data to explore the layout.',
@@ -691,44 +887,45 @@ function renderToday() {
   const dueUnplanned = dueToday.filter((t) => !plannedToday(t));
   const suggestions = suggestForToday().filter((t) => !plan.some((p) => p.taskId === t.taskId));
 
+  const longWaits = longWaitPatients();
   const cards = `
     <div class="stat-grid stat-grid--compact">
       ${statPill('warning', overdue.length, 'Overdue', 'overdue')}
+      ${statPill('accent', dueToday.length, 'Due today', 'today')}
       ${statPill('success', quick.length, 'Quick wins', 'quick')}
+      ${statPill('danger', longWaits.length, 'Long waits', 'longwait')}
     </div>`;
 
   const sections = [];
 
-  // Focus panel revealed by tapping a stat pill (overdue / quick wins)
-  if (todayFocus === 'overdue') {
-    sections.push(overdue.length
-      ? focusListPanel('⏰ Overdue', 'warning', overdue)
-      : `<div class="panel panel--warning"><div class="panel__title">⏰ Overdue</div>
-         <p class="field-row__hint">Nothing overdue. 🎉</p></div>`);
-  } else if (todayFocus === 'quick') {
-    sections.push(quick.length
-      ? focusListPanel('⚡ Quick wins', 'success', quick)
-      : `<div class="panel panel--success"><div class="panel__title">⚡ Quick wins</div>
-         <p class="field-row__hint">No quick wins right now.</p></div>`);
-  }
-
   // Today’s plan + time budget (always near top, with free time awareness)
+  // The bar shows the working day: diary bookings first (blue), then the planned
+  // tasks drawn inside whatever free time is left (purple).
   const planPct = budget ? Math.min(100, Math.round((planMinutes / budget) * 100)) : 0;
+  const bookedPct = budget ? Math.min(100, Math.round((booked / budget) * 100)) : 0;
+  const plannedPct = Math.max(0, Math.min(100 - bookedPct, planPct));
   sections.unshift(sectionPanel("Today’s plan", 'accent', `
-    <div class="plan-bar" role="img" aria-label="${planMinutes} of ${budget} minutes planned; ${hoursLabel(freeMin)} free">
-      <div class="plan-bar__fill" style="width:${planPct}%"></div>
+    <div class="plan-bar" role="img" aria-label="${hoursLabel(booked)} booked in diary and ${planMinutes} min planned of a ${budget} min working day; ${hoursLabel(freeMin)} free">
+      <div class="plan-bar__seg plan-bar__seg--booked" style="width:${bookedPct}%" title="Booked in diary: ${hoursLabel(booked)}"></div>
+      <div class="plan-bar__seg plan-bar__seg--planned" style="width:${plannedPct}%" title="Planned tasks: ${planMinutes} min"></div>
     </div>
-    <p class="field-row__hint">${planMinutes} min planned of ${budget} min working day · ${hoursLabel(booked)} booked in diary · ${hoursLabel(freeMin)} free.</p>
+    <p class="field-row__hint"><span class="plan-key plan-key--planned"></span>${planMinutes} min planned of ${budget} min working day · <span class="plan-key plan-key--booked"></span>${hoursLabel(booked)} booked in diary · ${hoursLabel(freeMin)} free.</p>
     ${plan.length
       ? `<ul class="task-list">${plan.map((t) => taskItem(t, { allocated: true })).join('')}</ul>`
       : '<p class="field-row__hint">Nothing planned yet — due-today tasks are added automatically; otherwise accept a suggestion or pin a task.</p>'}`));
+
+  const pinned = pinnedPatients().slice().sort((a, b) => patientScore(b.patientId) - patientScore(a.patientId));
+  if (pinned.length) {
+    sections.splice(1, 0, sectionPanel('📌 Pinned patients', 'accent',
+      `<ul class="task-list">${pinned.map(patientPinRow).join('')}</ul>`));
+  }
 
   if (dueUnplanned.length) {
     sections.push(sectionPanel('📅 Due today', 'accent',
       `<ul class="task-list">${dueUnplanned.map((t) => taskItem(t, { allocated: plannedToday(t) })).join('')}</ul>`));
   }
   if (urgent.length) {
-    sections.push(sectionPanel('🔥 Urgent — breach risk / high priority', 'warning',
+    sections.push(sectionPanel('🔥 Urgent — long waits / high priority', 'warning',
       `<ul class="task-list">${urgent.map((t) => taskItem(t, { allocated: plannedToday(t) })).join('')}</ul>`));
   }
 
@@ -741,9 +938,12 @@ function renderToday() {
   }
 
   const nothing = !overdue.length && !dueToday.length && !urgent.length && !quick.length && !plan.length;
-  const empty = nothing && !todayFocus ? '<div class="panel"><p class="field-row__hint">No tasks need attention right now. 🎉</p></div>' : '';
+  const empty = nothing ? '<div class="panel"><p class="field-row__hint">No tasks need attention right now. 🎉</p></div>' : '';
 
-  return head + cards + sections.join('') + empty;
+  // A Gantt-style bar of the day's diary bookings, above the plan.
+  const timeline = todayTimelineHTML(todayIso);
+
+  return head + quickAdd + cards + timeline + sections.join('') + empty;
 }
 /* ---- Tasks (spreadsheet) ------------------------------------------ */
 
@@ -872,27 +1072,16 @@ function renderTasks() {
         Every open task in one table, grouped by patient. Click a column
         heading to sort — overdue and high-priority work rises to the top.
       </p>
-      <div class="btn-row" style="margin-top:var(--space-3)">
-        <button class="btn btn--primary" data-action="new-task">＋ New task <kbd class="kbd">Alt</kbd><kbd class="kbd">E</kbd></button>
-      </div>
     </header>`;
 
   // Inline quick-add (Phase D): type + Enter. Understands simple dates & durations.
-  const quickAdd = `
-    <form class="quick-add" data-action="quick-add-form">
-      <span class="quick-add__icon" aria-hidden="true">${icon('plus')}</span>
-      <input class="quick-add__input" id="quick-add-input" type="text" name="q"
-             placeholder="Add a task…   try “call Sam tomorrow 30m”"
-             aria-label="Quick add task" autocomplete="off" />
-      <button class="btn btn--primary" type="submit">Add</button>
-    </form>`;
+  const quickAdd = quickAddForm();
 
   if (!state.tasks.length) {
     return head + quickAdd + emptyState({
       icon: '✅',
       title: 'No tasks yet',
-      text: 'Add a task here, or open a patient from the Caseload to attach one to them.',
-      actions: '<button class="btn btn--primary" data-action="new-task">＋ New task</button>',
+      text: 'Type in the bar above to add a task, or open a patient from the Caseload to attach one to them.',
     });
   }
 
@@ -964,17 +1153,42 @@ function renderTasks() {
 /** Fixed colour palette with agreed meanings (Settings-free, ADHD-friendly). */
 const CASELOAD_PALETTE = [
   ['', 'No tag'],
-  ['#c0342b', 'Red — breach risk / urgent'],
+  ['#c0342b', 'Red — long wait / urgent'],
   ['#b4690e', 'Amber — caution'],
   ['#2f7d32', 'Green — on track'],
   ['#2a5db0', 'Blue — clinical focus'],
   ['#7c3aed', 'Purple — review soon'],
 ];
 
+/**
+ * A distinct shape per palette colour, so patient tags stay readable without
+ * relying on hue alone (red = triangle, amber = square, green = circle,
+ * blue = diamond, purple = star; custom colours fall back to a circle).
+ */
+const TAG_SHAPES = {
+  '#c0342b': 'tag--triangle',
+  '#b4690e': 'tag--square',
+  '#2f7d32': 'tag--circle',
+  '#2a5db0': 'tag--diamond',
+  '#7c3aed': 'tag--star',
+};
+function tagShapeClass(colorTag) {
+  return TAG_SHAPES[String(colorTag || '').toLowerCase()] || 'tag--custom';
+}
+/** Human name for a palette colour (used as the swatch tooltip). */
+function paletteTitle(colorTag) {
+  const hit = CASELOAD_PALETTE.find(([c]) => c && c.toLowerCase() === String(colorTag || '').toLowerCase());
+  return hit ? hit[1] : 'Custom colour';
+}
+/** Colour + shape patient swatch (works in greyscale). Empty string when untagged. */
+function tagSwatch(colorTag) {
+  if (!colorTag) return '';
+  return `<span class="tag ${tagShapeClass(colorTag)}" style="--tag:${esc(colorTag)}" title="${esc(paletteTitle(colorTag))}" aria-hidden="true"></span>`;
+}
+
 let caseloadMenuId = null;   // patient whose row/card menu is open
-let todayFocus = null;       // Today view: which stat pill is expanded ('overdue' | 'quick')
 let drawerPatientId = null;  // patient whose drawer is open
-let collapsedPatients = new Set();  // caseload patients whose task list is minimised
+let expandedPatients = new Set();  // caseload patients whose task list is expanded (all collapsed by default)
 
 /** Number of incomplete tasks bound to a patient. */
 function activeCount(patientId) {
@@ -1096,7 +1310,7 @@ function renderPatientTable(list, cfg) {
     const tagged = p.colorTag ? ' caseload-row--tagged' : '';
     const style = p.colorTag ? ` style="--row-accent:${esc(p.colorTag)}"` : '';
     return `<tr class="caseload-row${tagged}"${style}>
-      <td class="mono">${esc(p.patientId)}</td>
+      <td class="mono"><span class="id-wrap">${tagSwatch(p.colorTag)}<span>${esc(p.patientId)}</span></span></td>
       <td><button class="link-btn" data-action="open-drawer" data-id="${esc(p.patientId)}">${esc(p.name)}</button></td>
       <td>${esc(p.pathway || '—')}</td>
       <td class="${breach ? 'wait-badge wait-badge--danger' : ''}">${esc(p.daysInStage ?? '—')}${breach ? ' ⚠' : ''}</td>
@@ -1107,6 +1321,7 @@ function renderPatientTable(list, cfg) {
                 aria-expanded="${menuOpen}" aria-label="Actions for ${esc(p.name)}">${icon('dots')}</button>
         ${menu}
       </td>
+      <td class="row-tail" aria-hidden="true"></td>
     </tr>`;
   };
 
@@ -1115,24 +1330,27 @@ function renderPatientTable(list, cfg) {
     tbody = list.map(rowHTML).join('');
   } else {
     tbody = groupPatients(list, cfg.groupBy).map(([g, items]) => `
-      <tr class="group-row"><td colspan="7">${esc(g)} <span class="group-count">${items.length}</span></td></tr>
+      <tr class="group-row"><td colspan="8">${esc(g)} <span class="group-count">${items.length}</span></td></tr>
       ${items.map(rowHTML).join('')}`).join('');
   }
 
   return `
     <div class="panel table-panel">
-      <table class="data-table">
-        <thead><tr>
-          ${th('patientId', 'ID')}
-          ${th('name', 'Name')}
-          <th scope="col">Pathway</th>
-          ${th('daysInStage', 'Days in stage')}
-          ${th('tasks', 'Tasks')}
-          ${th('score', 'Priority')}
-          <th scope="col" aria-label="Actions"></th>
-        </tr></thead>
-        <tbody>${tbody}</tbody>
-      </table>
+      <div class="caseload-table-scroll">
+        <table class="data-table">
+          <thead><tr>
+            ${th('patientId', 'ID')}
+            ${th('name', 'Name')}
+            <th scope="col">Pathway</th>
+            ${th('daysInStage', 'Days in stage')}
+            ${th('tasks', 'Tasks')}
+            ${th('score', 'Priority')}
+            <th scope="col" aria-label="Actions"></th>
+            <th scope="col" class="col-tail" aria-hidden="true"></th>
+          </tr></thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>
       <p class="field-row__hint" style="margin-top:var(--space-3)">
         ${list.length} of ${state.patients.length} patient${state.patients.length === 1 ? '' : 's'} shown.
       </p>
@@ -1153,6 +1371,7 @@ function renderPatientCards(list) {
         const style = p.colorTag ? ` style="--tag:${esc(p.colorTag)}"` : '';
         return `<article class="patient-card${tagged} ${breach ? 'patient-card--breach' : ''} ${overdue ? 'patient-card--overdue' : ''}"${style}>
           <div class="patient-card__top">
+            ${tagSwatch(p.colorTag)}
             <span class="mono patient-card__id">${esc(p.patientId)}</span>
             <button class="btn--icon" data-action="toggle-rownav" data-id="${esc(p.patientId)}" aria-haspopup="menu"
                     aria-expanded="${menuOpen}" aria-label="Actions for ${esc(p.name)}">${icon('dots')}</button>
@@ -1196,6 +1415,54 @@ function rowMenuHTML(p) {
       <button class="row-menu__item" data-action="edit-patient" data-id="${esc(p.patientId)}">Edit details</button>
       <button class="row-menu__item row-menu__item--danger" data-action="delete-patient" data-id="${esc(p.patientId)}">Delete patient</button>
     </div>`;
+}
+
+/** Re-anchor an open row/card menu to the viewport so the scroll containers
+ *  around it (the table pane, the caseload body) can't clip it, and clamp it
+ *  so it stays on screen. */
+function placeCaseloadMenu() {
+  const menu = document.querySelector('.row-menu');
+  if (!menu) return;
+  const anchor = menu.parentElement && menu.parentElement.querySelector('[data-action="toggle-rownav"]');
+  if (!anchor) return;
+  const gap = 4, pad = 8;
+  const a = anchor.getBoundingClientRect();
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  const maxLeft = Math.max(pad, window.innerWidth - mw - pad);
+  const left = Math.min(Math.max(pad, a.right - mw), maxLeft);
+  let top = a.bottom + gap;
+  if (top + mh > window.innerHeight - pad) top = a.top - gap - mh;   // flip above when it won't fit below
+  top = Math.min(Math.max(pad, top), Math.max(pad, window.innerHeight - mh - pad));
+  menu.style.position = 'fixed';
+  menu.style.right = 'auto';
+  menu.style.left = Math.round(left) + 'px';
+  menu.style.top = Math.round(top) + 'px';
+}
+
+/** Close the caseload menu without a full re-render (used once its row scrolls
+ *  out of the pane, or when the pane/window is resized). */
+function closeCaseloadMenu() {
+  caseloadMenuId = null;
+  const menu = document.querySelector('.row-menu');
+  if (menu) menu.remove();
+  const btn = document.querySelector('[data-action="toggle-rownav"][aria-expanded="true"]');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+/** Follow the anchor while its scroll container moves; close once the row it
+ *  belongs to has scrolled out of the pane. */
+function refreshCaseloadMenu() {
+  const menu = document.querySelector('.row-menu');
+  const anchor = menu && menu.parentElement && menu.parentElement.querySelector('[data-action="toggle-rownav"]');
+  if (!menu || !anchor) return;
+  const a = anchor.getBoundingClientRect();
+  const pane = menu.closest('.caseload-table-scroll');
+  if (pane) {
+    const p = pane.getBoundingClientRect();
+    if (a.bottom < p.top || a.top > p.bottom) return closeCaseloadMenu();
+  }
+  if (a.bottom < 0 || a.top > window.innerHeight) return closeCaseloadMenu();
+  placeCaseloadMenu();
 }
 
 /* ---- Patient drawer ----------------------------------------------- */
@@ -1251,7 +1518,7 @@ function syncDrawerTasks() {
 function patientTasksHTML(p) {
   const tasks = tasksFor(p.patientId);
   const active = tasks.filter((t) => !t.isCompleted).length;
-  const open = !collapsedPatients.has(p.patientId);
+  const open = expandedPatients.has(p.patientId);
   const label = !tasks.length ? 'No tasks'
     : active ? `${active} active task${active === 1 ? '' : 's'}`
     : 'No active tasks';
@@ -1275,11 +1542,16 @@ function renderDrawer() {
   const days = Number(p.daysInStage) || 0;
   const breach = days >= (state.settings.waitWarningDays || 42);
   const taskList = `<div id="drawer-tasks">${drawerTasksHTML(p)}</div>`;
+  // Suggestions for the free-text fields, drawn from what's already in use.
+  const pathways = [...new Set(state.patients.map((x) => x.pathway).filter(Boolean))].sort();
+  const statuses = [...new Set(state.patients.map((x) => x.status).filter(Boolean))].sort();
+  const paletteOpts = CASELOAD_PALETTE.map(([c, title]) =>
+    `<option value="${esc(c)}" ${(p.colorTag || '') === c ? 'selected' : ''}>${esc(title)}</option>`).join('');
 
   $('#drawer-content').innerHTML = `
     <div class="drawer__head${p.colorTag ? ' drawer__head--tagged' : ''}"${p.colorTag ? ` style="--tag:${esc(p.colorTag)}"` : ''}>
       <div class="drawer__head-row">
-        <h2 class="drawer__title">${esc(p.name)}</h2>
+        <h2 class="drawer__title"><span class="tag-wrap">${tagSwatch(p.colorTag)}${esc(p.name)}</span></h2>
         <button class="btn--icon" data-action="close-drawer" aria-label="Close">${icon('x')}</button>
       </div>
       <div class="patient-card__chips">
@@ -1291,12 +1563,36 @@ function renderDrawer() {
     </div>
 
     <div class="drawer__section">
-      <div class="field-row">
-        <div><div class="field-row__label">Patient ID</div>
-          <div class="field-row__hint mono">${esc(p.patientId)}</div></div>
-        <button class="btn" data-action="send-today" data-id="${esc(p.patientId)}">
-          ${p.pinnedToToday ? '✓ Remove from Today' : 'Send to Today'}
-        </button>
+      <h3 class="panel__title">Details <span class="field-row__hint">(edit any value, then save)</span></h3>
+      <div class="task-form">
+        <label>Name *
+          <input id="drawer-name" type="text" maxlength="120" autocomplete="off" value="${esc(p.name || '')}" />
+        </label>
+        <div class="task-form__grid">
+          <label>Pathway
+            <input id="drawer-pathway" type="text" list="drawer-pathway-options" autocomplete="off"
+                   placeholder="e.g. Treatment" value="${esc(p.pathway || '')}" />
+            <datalist id="drawer-pathway-options">${pathways.map((x) => `<option value="${esc(x)}"></option>`).join('')}</datalist>
+          </label>
+          <label>Status
+            <input id="drawer-status" type="text" list="drawer-status-options" autocomplete="off"
+                   placeholder="e.g. Active" value="${esc(p.status || '')}" />
+            <datalist id="drawer-status-options">${statuses.map((x) => `<option value="${esc(x)}"></option>`).join('')}</datalist>
+          </label>
+          <label>Days in stage
+            <input id="drawer-days" type="number" min="0" step="1" value="${days}" />
+          </label>
+          <label>Colour tag
+            <select id="drawer-color">${paletteOpts}</select>
+          </label>
+          <label>Patient ID
+            <input id="drawer-pid" type="text" readonly title="The ID can't be changed — linked tasks keep using it."
+                   value="${esc(p.patientId)}" />
+          </label>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:var(--space-3)">
+        <button class="btn btn--primary" data-action="drawer-save-details" data-id="${esc(p.patientId)}">Save details</button>
       </div>
     </div>
 
@@ -1319,10 +1615,30 @@ function renderDrawer() {
 
     <div class="drawer__section">
       <div class="btn-row">
-        <button class="btn" data-action="edit-patient" data-id="${esc(p.patientId)}">Edit details</button>
+        <button class="btn" data-action="send-today" data-id="${esc(p.patientId)}">
+          ${p.pinnedToToday ? '✓ Remove from Today' : 'Send to Today'}
+        </button>
         <button class="btn btn--danger" data-action="delete-patient" data-id="${esc(p.patientId)}">Delete patient</button>
       </div>
     </div>`;
+}
+
+/**
+ * Update the pin ("On Today's list") affordances in an open drawer without a
+ * full re-render, so any unsaved edits in the form are preserved.
+ */
+function refreshDrawerPin(p) {
+  const btn = document.querySelector('.drawer [data-action="send-today"]');
+  if (btn) btn.textContent = p.pinnedToToday ? '✓ Remove from Today' : 'Send to Today';
+  const chips = document.querySelector('.drawer__head .patient-card__chips');
+  if (chips) {
+    const existing = chips.querySelector('.chip--accent');
+    if (p.pinnedToToday && !existing) {
+      chips.insertAdjacentHTML('beforeend', '<span class="chip chip--accent">📌 Today</span>');
+    } else if (!p.pinnedToToday && existing) {
+      existing.remove();
+    }
+  }
 }
 
 /* ---- Task create / edit modal ------------------------------------- */
@@ -1720,6 +2036,7 @@ const hoursLabel = (min) => `${(min / 60).toFixed(min % 60 === 0 ? 0 : 1)}h`;
 function occursOn(e, iso) {
   const r = e.recurrence;
   if (!r || !r.freq || r.freq === 'none') return e.date === iso;
+  if (r.exdates && r.exdates.includes(iso)) return false;   // this occurrence was removed
   if (iso < e.date) return false;
   if (iso === e.date) return true;                    // the anchor date always occurs
   if (r.until && iso > r.until) return false;
@@ -1779,8 +2096,6 @@ function weekEvents(iso) {
   return eventsInRange(start, addDays(start, 6));
 }
 
-const DIARY_PX = 0.8;   // pixels per minute
-
 /** Add N months to an ISO date, clamping the day to the month's length. */
 function addMonths(iso, n) {
   const d = new Date(iso + 'T00:00:00');
@@ -1809,6 +2124,71 @@ function stackedSegs(totals) {
   }).join('');
 }
 
+/** Minutes since midnight, right now. */
+function nowMinutes() {
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+/**
+ * What's happening now / up next on `iso`.
+ * `status`: 'current' | 'next' | 'none'; `minutes` is left (current) or until start (next).
+ */
+function nextUpInfo(iso) {
+  if (iso !== todayISO()) return { status: 'none' };
+  const now = nowMinutes();
+  const evs = eventsOn(iso).slice().sort((a, b) => minutesOf(a.startTime) - minutesOf(b.startTime));
+  const current = evs.find((e) => minutesOf(e.startTime) <= now && now < minutesOf(e.endTime));
+  if (current) return { status: 'current', event: current, minutes: minutesOf(current.endTime) - now };
+  const next = evs.find((e) => minutesOf(e.startTime) > now);
+  if (next) return { status: 'next', event: next, minutes: minutesOf(next.startTime) - now };
+  return { status: 'none' };
+}
+
+/** Live "happening now / up next" side card for today's diary. */
+function nextUpCard(iso) {
+  const info = nextUpInfo(iso);
+  if (info.status === 'current') {
+    const e = info.event;
+    return `<div class="panel panel--accent" id="diary-next">
+      <h2 class="panel__title">▶ Happening now</h2>
+      <p class="next-up__title">${esc(e.title)}</p>
+      <p class="field-row__hint">${fmtTime(minutesOf(e.startTime))}–${fmtTime(minutesOf(e.endTime))} · ${esc(categoryLabel(e.category))} · ${info.minutes} min left</p>
+    </div>`;
+  }
+  if (info.status === 'next') {
+    const e = info.event;
+    return `<div class="panel" id="diary-next">
+      <h2 class="panel__title">⏭ Up next</h2>
+      <p class="next-up__title">${esc(e.title)}</p>
+      <p class="field-row__hint">${fmtTime(minutesOf(e.startTime))}–${fmtTime(minutesOf(e.endTime))} · in ${info.minutes} min</p>
+    </div>`;
+  }
+  return `<div class="panel" id="diary-next">
+    <h2 class="panel__title">⏭ Up next</h2>
+    <p class="field-row__hint">Nothing else scheduled. Space to breathe. 🌿</p>
+  </div>`;
+}
+
+/** Reposition the live "now" lines and refresh the up-next card. */
+function tickDiaryClocks() {
+  const now = nowMinutes();
+  document.querySelectorAll('[data-now-line]').forEach((el) => {
+    const start = Number(el.dataset.dayStart) || 0;
+    const end = Number(el.dataset.dayEnd) || 1440;
+    const inRange = now >= start && now <= end;
+    el.hidden = !inRange;
+    if (!inRange) return;
+    const pct = `${((now - start) / Math.max(1, end - start)) * 100}%`;
+    if (el.dataset.axis === 'x') el.style.left = pct;
+    else el.style.top = pct;
+    const label = el.querySelector('[data-now-label]');
+    if (label) label.textContent = fmtTime(now);
+  });
+  const chip = document.getElementById('diary-next');
+  if (chip && state.settings.diaryDate === todayISO()) chip.outerHTML = nextUpCard(state.settings.diaryDate);
+}
+
 function renderDiary() {
   const date = state.settings.diaryDate || todayISO();
   const view = state.settings.diaryView || 'day';
@@ -1822,6 +2202,16 @@ function renderDiary() {
     </header>`;
 
   const segBtn = (id, label) => `<button class="seg__btn ${view === id ? 'seg__btn--on' : ''}" data-action="diary-view" data-view="${id}">${label}</button>`;
+  const zoomIdx = DIARY_ZOOM_LEVELS.indexOf(diaryZoomLevel());
+  const zoomCtl = view === 'month' ? '' : `
+      <div class="diary-zoom" role="group" aria-label="Timeline size">
+        <button class="btn btn--sm" data-action="diary-zoom-out" aria-label="Smaller timeline"
+                title="Smaller timeline"${zoomIdx <= 0 ? ' disabled' : ''}>−</button>
+        <button class="btn btn--sm diary-zoom__label" data-action="diary-zoom-reset"
+                title="Fit the timeline to the screen">${zoomIdx <= 0 ? 'Fit' : `${DIARY_ZOOM_LEVELS[zoomIdx]}×`}</button>
+        <button class="btn btn--sm" data-action="diary-zoom-in" aria-label="Larger timeline"
+                title="Larger timeline"${zoomIdx >= DIARY_ZOOM_LEVELS.length - 1 ? ' disabled' : ''}>＋</button>
+      </div>`;
   const toolbar = `
     <div class="diary-toolbar">
       <div class="seg" role="group" aria-label="Diary view">
@@ -1831,13 +2221,14 @@ function renderDiary() {
       <input class="diary-date" type="date" value="${esc(date)}" data-action="diary-date" aria-label="Diary date" />
       <button class="btn" data-action="diary-next" aria-label="Next">›</button>
       <button class="btn" data-action="diary-today">Today</button>
+      ${zoomCtl}
       <span class="spacer"></span>
       <button class="btn btn--primary" data-action="new-event">＋ New event</button>
     </div>`;
 
-  const body = view === 'week' ? diaryWeekHTML(date)
-    : view === 'month' ? diaryMonthHTML(date)
-    : diaryDayHTML(date);
+  const body = view === 'day' ? diaryDayHTML(date)
+    : view === 'week' ? diaryWeekHTML(date)
+    : diaryMonthHTML(date);
 
   return head + toolbar + body;
 }
@@ -1883,35 +2274,43 @@ function diaryDayHTML(date) {
   });
   dayStart = Math.floor(dayStart / 60) * 60;
   dayEnd = Math.ceil(dayEnd / 60) * 60;
-  if (dayEnd - dayStart < 60) dayEnd = dayStart + 60;
+  if (dayEnd - dayStart < 30) dayEnd = dayStart + 30;
+  const band = dayEnd - dayStart;
+  const pos = (m) => ((m - dayStart) / band) * 100;   // % down the timeline
+  const slotH = (30 / band) * 100;
 
   const slots = [];
   for (let m = dayStart; m < dayEnd; m += 30) {
     slots.push(`<button type="button" class="diary-slot" tabindex="-1" data-action="new-event" data-date="${date}" data-minute="${m}"
-      aria-label="Add event at ${fmtTime(m)}" style="top:${(m - dayStart) * DIARY_PX}px"></button>`);
+      aria-label="Add event at ${fmtTime(m)}" style="top:${pos(m)}%;height:${slotH}%"></button>`);
   }
   const hourMarks = [];
   for (let m = dayStart; m <= dayEnd; m += 60) {
-    hourMarks.push(`<div class="diary-hour" style="top:${(m - dayStart) * DIARY_PX}px">${fmtTime(m)}</div>`);
+    hourMarks.push(`<div class="diary-hour" style="top:${pos(m)}%">${fmtTime(m)}</div>`);
   }
   const blocks = dayEvents.map((e) => {
-    const top = (minutesOf(e.startTime) - dayStart) * DIARY_PX;
-    const h = Math.max(22, eventMinutes(e) * DIARY_PX);
     const pname = e.patientId ? patientName(e.patientId) : '';
-    return `<button type="button" class="diary-event diary-event--${esc(e.category)}" style="top:${top}px;height:${h}px"
-      data-action="edit-event" data-id="${esc(e.eventId)}">
+    const tip = `${e.title}${pname ? ' · ' + pname : ''} (${fmtTime(minutesOf(e.startTime))}–${fmtTime(minutesOf(e.endTime))})`;
+    return `<button type="button" class="diary-event diary-event--${esc(e.category)}" style="top:${pos(minutesOf(e.startTime))}%;height:${(eventMinutes(e) / band) * 100}%"
+      data-action="edit-event" data-id="${esc(e.eventId)}" data-date="${esc(e.date)}" title="${esc(tip)}">
       <span class="diary-event__title">${esc(e.title)}</span>
       <span class="diary-event__meta">${fmtTime(minutesOf(e.startTime))}–${fmtTime(minutesOf(e.endTime))}${pname ? ' · ' + esc(pname) : ''}</span>
       ${isRecurring(e) ? '<span class="diary-event__repeat" title="Repeating">🔁</span>' : ''}
     </button>`;
   }).join('');
 
+  // Live "now" line (today only); repositioned every 30s by tickDiaryClocks().
+  const nowMin = nowMinutes();
+  const nowLine = date === todayISO()
+    ? `<div class="diary-now-line" data-now-line data-day-start="${dayStart}" data-day-end="${dayEnd}"${nowMin >= dayStart && nowMin <= dayEnd ? '' : ' hidden'} style="top:${pos(nowMin)}%"><span class="diary-now-line__label" data-now-label>${fmtTime(nowMin)}</span></div>`
+    : '';
+
   const timeline = `
-    <div class="panel">
+    <div class="panel diary-main">
       <h2 class="panel__title">${esc(prettyDate)}</h2>
       <div class="diary-grid">
         <div class="diary-hours">${hourMarks.join('')}</div>
-        <div class="diary-track" style="height:${(dayEnd - dayStart) * DIARY_PX}px">${slots.join('')}${blocks}</div>
+        <div class="diary-track" data-band-start="${dayStart}" data-band-end="${dayEnd}">${slots.join('')}${blocks}${nowLine}<div class="diary-hover" hidden><span class="diary-hover__label"></span></div></div>
       </div>
       <p class="field-row__hint" style="margin-top:var(--space-3)">Click a slot (or drag across several) to add a block.</p>
     </div>`;
@@ -1935,7 +2334,7 @@ function diaryDayHTML(date) {
         </div>` : `<p class="field-row__hint">Set a weekly clinical target in Settings to compare.</p>`}
     </div>`;
 
-  return `<div class="diary-layout">${timeline}<div class="diary-side">${dayCard}${weekPanel}</div></div>`;
+  return `<div class="diary-layout">${timeline}<div class="diary-side">${date === todayISO() ? nextUpCard(date) : ''}${dayCard}${weekPanel}</div></div>`;
 }
 
 /** Week view: a Mon–Fri time grid, one column per working day. */
@@ -1953,22 +2352,27 @@ function diaryWeekHTML(date) {
     });
   });
   const startM = Math.floor(minM / 60) * 60;
-  const endM = Math.ceil(maxM / 60) * 60;
-  const H = (endM - startM) * DIARY_PX;
+  let endM = Math.ceil(maxM / 60) * 60;
+  if (endM - startM < 30) endM = startM + 30;
+  const band = endM - startM;
+  const pos = (m) => ((m - startM) / band) * 100;   // % down the timeline
+  const slotH = (30 / band) * 100;
+  const hover = '<div class="diary-hover" hidden><span class="diary-hover__label"></span></div>';
 
   const hourMarks = [];
   for (let m = startM; m <= endM; m += 60) {
-    hourMarks.push(`<div class="diary-hour" style="top:${(m - startM) * DIARY_PX}px">${fmtTime(m)}</div>`);
+    hourMarks.push(`<div class="diary-hour" style="top:${pos(m)}%">${fmtTime(m)}</div>`);
   }
 
   const today = todayISO();
   const head = days.map((d) => {
     const dt = new Date(d + 'T00:00:00');
-    const tot = hoursByCategory(evsByDay[d]).total;
+    // Per-day figure counts clinical hours only (not admin / non-clinical).
+    const tot = hoursByCategory(evsByDay[d]);
     return `<div class="diary-week__day${d === today ? ' diary-week__day--today' : ''}">
       <span class="diary-week__dow">${dt.toLocaleDateString(undefined, { weekday: 'short' })}</span>
       <span class="diary-week__num">${dt.getDate()}</span>
-      <span class="diary-week__tot">${tot ? hoursLabel(tot) : ''}</span>
+      <span class="diary-week__tot" title="Clinical hours">${tot.clinical ? hoursLabel(tot.clinical) : ''}</span>
     </div>`;
   }).join('');
 
@@ -1976,21 +2380,25 @@ function diaryWeekHTML(date) {
     const slots = [];
     for (let m = startM; m < endM; m += 30) {
       slots.push(`<button type="button" class="diary-slot" tabindex="-1" data-action="new-event" data-date="${d}" data-minute="${m}"
-        aria-label="Add event ${d} at ${fmtTime(m)}" style="top:${(m - startM) * DIARY_PX}px"></button>`);
+        aria-label="Add event ${d} at ${fmtTime(m)}" style="top:${pos(m)}%;height:${slotH}%"></button>`);
     }
     const blocks = evsByDay[d].map((e) => {
-      const top = (minutesOf(e.startTime) - startM) * DIARY_PX;
-      const h = Math.max(20, eventMinutes(e) * DIARY_PX);
       const pname = e.patientId ? patientName(e.patientId) : '';
-      return `<button type="button" class="diary-event diary-event--${esc(e.category)}" style="top:${top}px;height:${h}px"
-        data-action="edit-event" data-id="${esc(e.eventId)}" title="${esc(e.title)}${pname ? ' · ' + esc(pname) : ''}">
+      return `<button type="button" class="diary-event diary-event--${esc(e.category)}" style="top:${pos(minutesOf(e.startTime))}%;height:${(eventMinutes(e) / band) * 100}%"
+        data-action="edit-event" data-id="${esc(e.eventId)}" data-date="${esc(e.date)}" title="${esc(e.title)}${pname ? ' · ' + esc(pname) : ''}">
         <span class="diary-event__title">${esc(e.title)}</span>
         <span class="diary-event__meta">${fmtTime(minutesOf(e.startTime))}${pname ? ' · ' + esc(pname) : ''}</span>
         ${isRecurring(e) ? '<span class="diary-event__repeat" title="Repeating">🔁</span>' : ''}
       </button>`;
     }).join('');
-    return `<div class="diary-track" style="height:${H}px">${slots.join('')}${blocks}</div>`;
+    return `<div class="diary-track" data-band-start="${startM}" data-band-end="${endM}">${slots.join('')}${blocks}${hover}</div>`;
   }).join('');
+
+  // Live "now" line across the grid when today is one of the shown working days.
+  const nowMin = nowMinutes();
+  const weekNow = (today >= days[0] && today <= days[4])
+    ? `<div class="diary-week__now" data-now-line data-day-start="${startM}" data-day-end="${endM}"${nowMin >= startM && nowMin <= endM ? '' : ' hidden'} style="top:${pos(nowMin)}%"></div>`
+    : '';
 
   const wkTotals = hoursByCategory(days.flatMap((d) => evsByDay[d]));
   const target = Number(state.settings.clinicalTargetHours) || 0;
@@ -2018,14 +2426,14 @@ function diaryWeekHTML(date) {
       <div class="diary-week">
         <div class="diary-week__head"><div class="diary-week__gutter"></div>${head}</div>
         <div class="diary-week__body">
-          <div class="diary-hours" style="height:${H}px">${hourMarks.join('')}</div>
-          ${cols}
+          <div class="diary-hours">${hourMarks.join('')}</div>
+          ${cols}${weekNow}
         </div>
       </div>
     </div>`;
 
-  return `<div class="diary-layout"><div class="panel">${grid}
-    <p class="field-row__hint" style="margin-top:var(--space-3)">Click or drag a slot to add a block. Click a block to edit.</p>
+  return `<div class="diary-layout"><div class="panel diary-main">${grid}
+    <p class="field-row__hint" style="margin-top:var(--space-3)">Day figures show clinical hours. Click or drag a slot to add a block; click a block to edit.</p>
   </div><div class="diary-side">${weekCard}</div></div>`;
 }
 
@@ -2051,7 +2459,7 @@ function diaryMonthHTML(date) {
     const cls = `diary-cal${inMonth ? '' : ' diary-cal--muted'}${weekend ? ' diary-cal--weekend' : ''}${d === today ? ' diary-cal--today' : ''}`;
     cells.push(`<button type="button" class="${cls}"${inMonth ? ` data-action="diary-goto-day" data-date="${d}"` : ' disabled'}>
       <span class="diary-cal__num">${dt.getDate()}</span>
-      ${inMonth && totals.total ? `<span class="diary-cal__hours">${hoursLabel(totals.total)}</span>` : ''}
+      ${inMonth && totals.clinical ? `<span class="diary-cal__hours" title="Clinical hours">${hoursLabel(totals.clinical)}</span>` : ''}
       ${inMonth && totals.total ? `<span class="diary-cal__bar">${stackedSegs(totals)}</span>` : ''}
     </button>`);
   }
@@ -2082,19 +2490,21 @@ function diaryMonthHTML(date) {
       </div>
     </div>`;
 
-  return `<div class="diary-layout"><div class="panel">
+  return `<div class="diary-layout"><div class="panel diary-main diary-main--month">
     <h2 class="panel__title">${esc(title)}</h2>${grid}
-    <p class="field-row__hint" style="margin-top:var(--space-3)">Click a day to open it in Day view.</p>
+    <p class="field-row__hint" style="margin-top:var(--space-3)">Day figures show clinical hours. Click a day to open it in Day view.</p>
   </div><div class="diary-side">${monthCard}</div></div>`;
 }
 
 /* ---- Diary event modal -------------------------------------------- */
 let eventModalId = null;
+let eventModalOccDate = null;   // the occurrence (day) the user opened, for repeating events
 let lastDragEnd = 0;   // timestamp of the last drag-create (suppresses the trailing click)
 
-function openEventModal({ eventId = null, date, startMin, endMin } = {}) {
+function openEventModal({ eventId = null, occurrenceDate = null, date, startMin, endMin } = {}) {
   const existing = eventId ? state.diary.find((e) => e.eventId === eventId) : null;
   eventModalId = existing ? existing.eventId : null;
+  eventModalOccDate = occurrenceDate || (existing ? existing.date : null);
 
   const d = existing ? existing.date : (date || state.settings.diaryDate || todayISO());
   const s = existing ? minutesOf(existing.startTime) : (startMin != null ? startMin : minutesOf(state.settings.workdayStart));
@@ -2245,10 +2655,58 @@ function submitEvent() {
 function deleteEvent() {
   if (!eventModalId) { closeModal(); return; }
   const ev = state.diary.find((e) => e.eventId === eventModalId);
-  const recurring = ev && isRecurring(ev);
-  state.diary = state.diary.filter((e) => e.eventId !== eventModalId);
+  if (!ev) { closeModal(); return; }
+
+  if (!isRecurring(ev)) {
+    state.diary = state.diary.filter((e) => e.eventId !== eventModalId);
+    closeModal();
+    toast('Event deleted.');
+    save();
+    return;
+  }
+
+  // Repeating event: ask whether to drop one occurrence or the whole series.
+  const occ = eventModalOccDate || ev.date;
+  const when = new Date(occ + 'T00:00:00')
+    .toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  openModal({
+    title: 'Delete repeating event',
+    body: `
+      <p>“${esc(ev.title)}” repeats.</p>
+      <p class="field-row__hint" style="margin-top:var(--space-2)">
+        Delete just <strong>${esc(when)}</strong>, or remove every occurrence in the series?
+      </p>`,
+    actions: [
+      { label: 'Cancel', onClick: () => openEventModal({ eventId: ev.eventId, occurrenceDate: occ }) },
+      { label: 'This occurrence only', onClick: () => removeOccurrence(ev, occ) },
+      { label: 'Whole series', variant: 'danger', onClick: () => {
+        state.diary = state.diary.filter((e) => e.eventId !== ev.eventId);
+        closeModal();
+        toast('Event and its repeats deleted.');
+        save();
+      } },
+    ],
+  });
+}
+
+/** Remove a single occurrence of a repeating event; drop the series if nothing remains. */
+function removeOccurrence(ev, iso) {
+  const r = ev.recurrence || (ev.recurrence = {});
+  const ex = new Set(r.exdates || []);
+  ex.add(iso);
+  r.exdates = [...ex];
+
+  let remains = false;
+  for (let d = ev.date, i = 0; i < 3660 && !remains; i++, d = addDays(d, 1)) {
+    if (occursOn(ev, d)) remains = true;   // occursOn already honours exdates
+  }
   closeModal();
-  toast(recurring ? 'Event and its repeats deleted.' : 'Event deleted.');
+  if (!remains) {
+    state.diary = state.diary.filter((e) => e.eventId !== ev.eventId);
+    toast('Last occurrence removed — repeating event deleted.');
+  } else {
+    toast('This occurrence deleted.');
+  }
   save();
 }
 
@@ -2293,6 +2751,22 @@ function renderSettings() {
         <select data-action="set-theme" aria-label="Theme">
           ${['light','dark','contrast'].map((t) =>
             `<option value="${t}" ${state.settings.theme === t ? 'selected' : ''}>${t[0].toUpperCase()+t.slice(1)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field-row">
+        <div><div class="field-row__label">Density</div>
+          <div class="field-row__hint">Compact tightens spacing so more fits on screen.</div></div>
+        <select data-action="set-density" aria-label="Density">
+          ${[['comfy','Comfy (roomier)'],['compact','Compact']].map(([v, l]) =>
+            `<option value="${v}" ${(state.settings.density || 'comfy') === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field-row">
+        <div><div class="field-row__label">Text size</div>
+          <div class="field-row__hint">Scales all text up or down.</div></div>
+        <select data-action="set-textsize" aria-label="Text size">
+          ${[['sm','Small'],['md','Default'],['lg','Large']].map(([t, label]) =>
+            `<option value="${t}" ${(state.settings.textSize || 'md') === t ? 'selected' : ''}>${label}</option>`).join('')}
         </select>
       </div>
     </div>
@@ -2449,6 +2923,7 @@ function closeModal() {
   root.hidden = true;
   root.innerHTML = '';
   root._actions = null;
+  focusModalKind = null;
   // Return focus to whatever opened the modal, if it still exists.
   if (lastFocusedEl && document.contains(lastFocusedEl)) lastFocusedEl.focus();
   lastFocusedEl = null;
@@ -3002,6 +3477,10 @@ function buildDemoState() {
 /* --------------------------------------------------------------------------
  * 11. Event wiring (event delegation)
  * ------------------------------------------------------------------------ */
+// A fixed-position caseload menu follows its row as the container scrolls.
+window.addEventListener('scroll', () => { if (caseloadMenuId) refreshCaseloadMenu(); }, true);
+window.addEventListener('resize', () => { if (caseloadMenuId) refreshCaseloadMenu(); });
+
 document.addEventListener('click', async (e) => {
   // Close modal on backdrop click
   if (e.target.id === 'modal-root') return closeModal();
@@ -3025,6 +3504,7 @@ document.addEventListener('click', async (e) => {
         task.completedAt = task.isCompleted ? new Date().toISOString() : null;
         if (task.isCompleted) celebrate();
         await save();
+        refreshFocusModal();
       }
       break;
     }
@@ -3032,6 +3512,7 @@ document.addEventListener('click', async (e) => {
       state.tasks = state.tasks.filter((t) => t.taskId !== el.dataset.id);
       toast('Task deleted.');
       await save();
+      refreshFocusModal();
       break;
     }
     case 'load-demo': {
@@ -3105,10 +3586,26 @@ document.addEventListener('click', async (e) => {
       state.settings.sidebarCollapsed = !state.settings.sidebarCollapsed;
       await save();
       break;
-    case 'today-focus': {
-      const key = el.dataset.focus;
-      todayFocus = todayFocus === key ? null : key;
-      render();
+    case 'open-focus':
+      openFocusModal(el.dataset.focus);
+      break;
+    case 'focus-toggle-plan': {
+      const task = state.tasks.find((t) => t.taskId === el.dataset.id);
+      if (task) {
+        const planned = plannedToday(task);
+        task.allocatedDate = planned ? null : todayISO();
+        if (!planned) toast('Added to today’s plan.');
+        await save();
+        openFocusModal(el.dataset.focus, task.taskId);
+      }
+      break;
+    }
+    case 'focus-add-all': {
+      const list = focusTasks(el.dataset.focus).filter((t) => !plannedToday(t));
+      list.forEach((t) => { t.allocatedDate = todayISO(); });
+      if (list.length) toast(`${list.length} task${list.length === 1 ? '' : 's'} added to today.`, 'success');
+      await save();
+      openFocusModal(el.dataset.focus);
       break;
     }
     case 'smart-list': {
@@ -3158,8 +3655,8 @@ document.addEventListener('click', async (e) => {
       break;
     case 'toggle-patient-tasks': {
       const id = el.dataset.id;
-      if (collapsedPatients.has(id)) collapsedPatients.delete(id);
-      else collapsedPatients.add(id);
+      if (expandedPatients.has(id)) expandedPatients.delete(id);
+      else expandedPatients.add(id);
       renderView();
       break;
     }
@@ -3173,6 +3670,8 @@ document.addEventListener('click', async (e) => {
         caseloadMenuId = null;
         toast(p.pinnedToToday ? `${p.name} sent to Today’s list.` : `${p.name} removed from Today’s list.`);
         await save();
+        if (drawerPatientId === p.patientId) refreshDrawerPin(p);
+        refreshFocusModal(el.dataset.id);
       }
       break;
     }
@@ -3258,7 +3757,20 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'edit-event':
-      openEventModal({ eventId: el.dataset.id });
+      openEventModal({ eventId: el.dataset.id, occurrenceDate: el.dataset.date || null });
+      break;
+    case 'diary-zoom-in':
+    case 'diary-zoom-out': {
+      const i = DIARY_ZOOM_LEVELS.indexOf(diaryZoomLevel());
+      const step = el.dataset.action === 'diary-zoom-in' ? 1 : -1;
+      const next = Math.max(0, Math.min(DIARY_ZOOM_LEVELS.length - 1, i + step));
+      state.settings.diaryZoom = DIARY_ZOOM_LEVELS[next];
+      await save();
+      break;
+    }
+    case 'diary-zoom-reset':
+      state.settings.diaryZoom = 1;
+      await save();
       break;
     case 'new-patient':
       caseloadMenuId = null;
@@ -3279,6 +3791,34 @@ document.addEventListener('click', async (e) => {
     case 'close-drawer':
       closeDrawer();
       break;
+    case 'drawer-save-details': {
+      const p = state.patients.find((x) => x.patientId === drawerPatientId);
+      if (!p) break;
+      const nameEl = $('#drawer-name');
+      const name = String((nameEl || {}).value || '').trim();
+      if (!name) {
+        toast('Give the patient a name first.');
+        if (nameEl) nameEl.focus();
+        break;
+      }
+      p.name = name;
+      p.pathway = String(($('#drawer-pathway') || {}).value || '').trim();
+      p.status = String(($('#drawer-status') || {}).value || '').trim();
+      const days = parseInt(($('#drawer-days') || {}).value, 10);
+      p.daysInStage = Number.isFinite(days) && days > 0 ? days : 0;
+      p.colorTag = ($('#drawer-color') || {}).value || null;
+      p.updatedAt = new Date().toISOString();
+      caseloadMenuId = null;
+      const pendingNotes = ($('#drawer-notes') || {}).value;   // don't lose unsaved notes
+      await save();
+      renderDrawer();
+      const notesEl = $('#drawer-notes');
+      if (notesEl && pendingNotes != null) notesEl.value = pendingNotes;
+      const saveBtn = document.querySelector('[data-action="drawer-save-details"]');
+      if (saveBtn) saveBtn.focus();
+      toast('Patient details saved.');
+      break;
+    }
     case 'drawer-save-notes': {
       const p = state.patients.find((x) => x.patientId === drawerPatientId);
       if (p) {
@@ -3333,6 +3873,32 @@ document.addEventListener('pointerup', () => {
   openEventModal({ date: drag.date || state.settings.diaryDate || todayISO(), startMin: a, endMin: b });
 });
 
+// Diary hover guide: a faint line + time chip that follows the pointer.
+function hideDiaryHovers(except) {
+  document.querySelectorAll('.diary-hover').forEach((h) => { if (h !== except) h.hidden = true; });
+}
+document.addEventListener('pointermove', (e) => {
+  if (diaryDrag) { hideDiaryHovers(null); return; }
+  const track = e.target && e.target.closest ? e.target.closest('.diary-track') : null;
+  if (!track || !track.dataset.bandStart) { hideDiaryHovers(null); return; }
+  const start = Number(track.dataset.bandStart);
+  const end = Number(track.dataset.bandEnd);
+  const rect = track.getBoundingClientRect();
+  if (!rect.height || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+  const frac = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+  const mins = Math.round((start + frac * (end - start)) / 5) * 5;
+  const hov = track.querySelector('.diary-hover');
+  if (!hov) return;
+  hideDiaryHovers(hov);
+  hov.hidden = false;
+  hov.style.top = `${((mins - start) / (end - start)) * 100}%`;
+  const lbl = hov.querySelector('.diary-hover__label');
+  if (lbl) { lbl.textContent = fmtTime(mins); lbl.hidden = rect.width < 140; }
+});
+document.addEventListener('pointerleave', () => hideDiaryHovers(null));
+window.addEventListener('blur', () => hideDiaryHovers(null));
+
+
 // Live caseload search without losing input focus
 document.addEventListener('input', (e) => {
   const el = e.target.closest('[data-action="search-caseload"]');
@@ -3357,6 +3923,16 @@ document.addEventListener('change', async (e) => {
 
   if (el.dataset.action === 'set-theme') {
     state.settings.theme = el.value;
+    await save();
+    return;
+  }
+  if (el.dataset.action === 'set-density') {
+    state.settings.density = el.value;
+    await save();
+    return;
+  }
+  if (el.dataset.action === 'set-textsize') {
+    state.settings.textSize = el.value;
     await save();
     return;
   }
@@ -3448,6 +4024,17 @@ document.addEventListener('keydown', (e) => {
     if ($('#modal-root').hidden) openTaskModal(null);
     return;
   }
+  // Enter in a drawer detail field saves the details (they're not inside a <form>)
+  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const t = e.target;
+    if (t && t.closest && t.closest('#drawer-content')
+        && t.matches('#drawer-name, #drawer-pathway, #drawer-status, #drawer-days')) {
+      e.preventDefault();
+      const saveBtn = document.querySelector('[data-action="drawer-save-details"]');
+      if (saveBtn) saveBtn.click();
+      return;
+    }
+  }
   const modalOpen = !$('#modal-root').hidden;
   if (e.key === 'Tab' && modalOpen) {
     const items = [...$('#modal-root').querySelectorAll(
@@ -3491,6 +4078,24 @@ function applyTheme() {
   document.documentElement.setAttribute('data-theme', theme);
   const sel = $('#theme-select');
   if (sel && sel.value !== theme) sel.value = theme;
+}
+
+/** Diary timeline zoom levels. 1 = fill the screen; higher = taller grid. */
+const DIARY_ZOOM_LEVELS = [1, 1.25, 1.5, 2, 2.5];
+function diaryZoomLevel() {
+  const z = Number(state.settings.diaryZoom);
+  return DIARY_ZOOM_LEVELS.includes(z) ? z : 1;
+}
+
+/** Density (how much fits on screen), text-size scale and diary zoom are
+ *  attribute/variable-driven so CSS owns the numbers and each can be flipped
+ *  live from Settings or the diary toolbar. */
+function applyDensity() {
+  const compact = state.settings.density === 'compact';
+  const root = document.documentElement;
+  root.setAttribute('data-density', compact ? 'compact' : 'comfy');
+  root.setAttribute('data-textsize', state.settings.textSize || 'md');
+  root.style.setProperty('--diary-zoom', String(diaryZoomLevel()));
 }
 
 /** Desktop: collapse the sidebar to an icon rail (persisted). Mobile is unaffected. */
@@ -3562,6 +4167,7 @@ function registerServiceWorker() {
   render();
   registerServiceWorker();
   watchConnectivity();
+  setInterval(tickDiaryClocks, 30000);
   if (wasCorrupt) {
     toast('Your saved data could not be read — the app started fresh. A recovery copy was kept (see Settings).', 'error', 9000);
   }
