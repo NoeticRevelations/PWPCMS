@@ -620,7 +620,8 @@ function taskItem(t, { allocated = false } = {}) {
         <span class="task-row__patient">${patientLabel}</span>
         <span class="task-row__meta">${meta.join(' · ')}</span>
       </span>
-      <span class="task-row__title">${esc(t.title)}</span>
+      <button type="button" class="task-row__title task-row__title--btn" data-action="edit-task"
+              data-id="${esc(t.taskId)}" title="Edit task">${esc(t.title)}</button>
     </div>
     <span class="task-row__score" title="ADHD priority score">${score}</span>
     <div class="task-row__actions">
@@ -1030,7 +1031,8 @@ function taskTableRow(t) {
       <button class="task-row__check" data-action="toggle-task" data-id="${esc(t.taskId)}"
               aria-label="Mark complete" title="Mark complete"></button>
     </td>
-    <td class="col-task"><span class="task-line__title">${esc(t.title)}</span>${
+    <td class="col-task"><button type="button" class="task-line__title task-line__title--btn" data-action="edit-task"
+              data-id="${esc(t.taskId)}" title="Edit task">${esc(t.title)}</button>${
       allocated ? ' <span class="task-line__pin" title="On today’s plan">📌</span>' : ''}</td>
     <td class="col-patient">${p
       ? `<button class="link-btn" data-action="open-drawer" data-id="${esc(p.patientId)}">${esc(p.name)}</button>`
@@ -1490,19 +1492,27 @@ function closeDrawer() {
   drawerLastFocused = null;
 }
 
-/** The task list markup for a patient's drawer. */
-function drawerTasksHTML(p) {
+/** The task list markup for a patient's drawer. Pass `editable` to make each
+    task's text open the task editor (used by the Caseload task lists). */
+function drawerTasksHTML(p, { editable = false } = {}) {
   const tasks = tasksFor(p.patientId);
   return tasks.length
-    ? `<ul class="task-list">${tasks.map((t) => `
+    ? `<ul class="task-list">${tasks.map((t) => {
+        const strike = t.isCompleted ? ' task-row__title--strike' : '';
+        const title = editable
+          ? `<button class="task-row__title task-row__title--btn${strike}" data-action="edit-task"
+                     data-id="${esc(t.taskId)}" title="Edit task">${esc(t.title)}</button>`
+          : `<span class="task-row__title${strike}">${esc(t.title)}</span>`;
+        return `
         <li class="task-row ${t.isCompleted ? 'task-row--done' : ''}">
           <button class="task-row__check" data-action="toggle-task" data-id="${esc(t.taskId)}"
                   aria-label="Mark ${t.isCompleted ? 'incomplete' : 'complete'}">${t.isCompleted ? '✓' : ''}</button>
-          <span class="task-row__title ${t.isCompleted ? 'task-row__title--strike' : ''}">${esc(t.title)}</span>
+          ${title}
           <span class="task-row__meta">${esc(dueLabel(t.dueDate))}</span>
           <button class="btn--icon" data-action="delete-task" data-id="${esc(t.taskId)}"
                   aria-label="Delete task" title="Delete task">${icon('trash')}</button>
-        </li>`).join('')}</ul>`
+        </li>`;
+      }).join('')}</ul>`
     : '<p class="field-row__hint">No tasks yet — add one below.</p>';
 }
 
@@ -1530,7 +1540,7 @@ function patientTasksHTML(p) {
         <span>${label}</span>
       </button>
       ${open ? `<div class="ptasks__list">
-        ${drawerTasksHTML(p)}
+        ${drawerTasksHTML(p, { editable: true })}
         <button class="ptasks__add" data-action="add-task" data-id="${esc(p.patientId)}">＋ Add task</button>
       </div>` : ''}
     </div>`;
