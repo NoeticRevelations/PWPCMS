@@ -14,7 +14,7 @@
 /* --------------------------------------------------------------------------
  * 1. Constants & default state
  * ------------------------------------------------------------------------ */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const LS_KEY = 'caseload_manager_state_v1';       // localStorage record
 const IDB_NAME = 'caseload_manager';
 const IDB_STORE = 'kv';
@@ -39,6 +39,10 @@ function defaultState() {
         mode: 'table', sortKey: 'daysInStage', dir: 'desc',
         groupBy: 'none', pathway: 'all', search: '', breachOnly: false,
       },
+      supervisionView: {                    // its own prefs for the Supervision view
+        mode: 'table', sortKey: 'daysInStage', dir: 'desc',
+        groupBy: 'cmsStatus', pathway: 'all', search: '', breachOnly: false,
+      },
       // ADHD priority scoring weights (tunable in Settings > Priority scoring)
       weights: { daysInStage: 0.4, dueProximity: 0.3, dread: 15, time: 0.2, priority: 5 },
       rewardAnimation: true,                // celebratory pulse on task completion
@@ -50,6 +54,7 @@ function defaultState() {
       sidebarCollapsed: false,              // desktop: collapse the sidebar to an icon rail
       density: 'comfy',                     // comfy | compact  (spacing / how much fits)
       textSize: 'md',                       // sm | md | lg      (typography scale)
+      todayCollapsed: {},                   // Today cards folded to their title, keyed by card id
     },
     meta: {
       schemaVersion: SCHEMA_VERSION,
@@ -88,6 +93,41 @@ function addDays(iso, n) {
   return todayISO(d);
 }
 
+/** Whole calendar days from a YYYY-MM-DD date to today. Never negative. */
+function daysSinceISO(iso) {
+  if (!iso) return 0;
+  const from = new Date(iso + 'T00:00:00');
+  if (Number.isNaN(from.getTime())) return 0;
+  const diff = Math.round((new Date(todayISO() + 'T00:00:00') - from) / 86400000);
+  return diff > 0 ? diff : 0;
+}
+
+/**
+ * Live "days in stage" — the figure stored on the patient plus one for each
+ * whole day since it was last set (`daysInStageAsOf`). It ticks over on its
+ * own, so a patient imported at 42 days reads 43 the next day without a
+ * re-import. Falls back to the stored number when no anchor is known, so
+ * pre-existing saves never jump.
+ */
+function daysInStageOf(p) {
+  if (!p) return 0;
+  return Math.max(0, (Number(p.daysInStage) || 0) + daysSinceISO(p.daysInStageAsOf));
+}
+
+/**
+ * Give any patient that has no wait anchor one dated today, so their days in
+ * stage starts counting from now (a first run on old data never jumps
+ * forward). Returns true when something changed and needs saving.
+ */
+function seedStageAnchors() {
+  const today = todayISO();
+  let changed = false;
+  for (const p of state.patients) {
+    if (p && !p.daysInStageAsOf) { p.daysInStageAsOf = today; changed = true; }
+  }
+  return changed;
+}
+
 /** Escape untrusted text before injecting into HTML. */
 function esc(value) {
   return String(value ?? '')
@@ -106,6 +146,7 @@ const ICON_PATHS = {
   today: '<path d="M8 2v3M16 2v3M3.5 8h17"/><rect x="3" y="5" width="18" height="16" rx="2"/><path d="m9 14 2 2 4-4"/>',
   tasks: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.6 1.6L7.2 5M3 12l1.6 1.6L7.2 11M3 18l1.6 1.6L7.2 17"/>',
   caseload: '<path d="M16 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1"/><circle cx="9" cy="8" r="3.2"/><path d="M22 20v-1a4 4 0 0 0-3-3.87M16 4.13A4 4 0 0 1 16 12"/>',
+  supervision: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/>',
   diary: '<rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/>',
   overdue: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
@@ -118,6 +159,7 @@ const ICON_PATHS = {
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
   pin: '<path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3H7l3-3-1-6Z"/>',
   dots: '<circle cx="12" cy="5" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.7" fill="currentColor" stroke="none"/>',
+  chevron: '<path d="m6 9 6 6 6-6"/>',
 };
 
 /** Render an inline SVG icon by name. */
@@ -303,6 +345,12 @@ function migrate(data) {
   out.settings = Object.assign({}, base.settings, data.settings || {});
   out.settings.weights = Object.assign({}, base.settings.weights, (data.settings || {}).weights || {});
   out.settings.tasksView = Object.assign({}, base.settings.tasksView, (data.settings || {}).tasksView || {});
+  out.settings.supervisionView = Object.assign({}, base.settings.supervisionView, (data.settings || {}).supervisionView || {});
+  // v1 → v2: the Supervision view first shipped grouping by "None"; make CMS status the default.
+  const prevSchema = (data.meta && data.meta.schemaVersion) || 0;
+  if (prevSchema < 2 && out.settings.supervisionView.groupBy === 'none') {
+    out.settings.supervisionView.groupBy = 'cmsStatus';
+  }
   out.meta = Object.assign({}, base.meta, data.meta || {});
   out.patients = Array.isArray(out.patients) ? out.patients : [];
   out.tasks = Array.isArray(out.tasks) ? out.tasks : [];
@@ -338,6 +386,7 @@ const ROUTES = [
   { id: 'today',    label: 'Today',    render: renderToday },
   { id: 'tasks',    label: 'Tasks',    render: renderTasks },
   { id: 'caseload', label: 'Caseload', render: renderCaseload },
+  { id: 'supervision', label: 'Supervision', render: renderSupervision },
   { id: 'diary',    label: 'Diary',    render: renderDiary },
   { id: 'settings', label: 'Settings', render: renderSettings },
 ];
@@ -348,7 +397,7 @@ function currentRouteId() {
 }
 
 /** Route → icon name for the sidebar. */
-const ROUTE_ICONS = { today: 'today', tasks: 'tasks', caseload: 'caseload', diary: 'diary', settings: 'settings' };
+const ROUTE_ICONS = { today: 'today', tasks: 'tasks', caseload: 'caseload', supervision: 'supervision', diary: 'diary', settings: 'settings' };
 
 function renderNav() {
   const active = currentRouteId();
@@ -374,7 +423,7 @@ function renderSmartLists() {
   const filter = state.settings.tasksView.filter;
   const breachOn = !!state.settings.caseloadView.breachOnly;
   const breachCount = state.patients.filter(
-    (p) => (Number(p.daysInStage) || 0) >= (Number(state.settings.waitWarningDays) || 42)
+    (p) => daysInStageOf(p) >= (Number(state.settings.waitWarningDays) || 42)
   ).length;
   const lists = [
     { key: 'overdue', label: 'Overdue', count: countOverdue(), icon: 'overdue' },
@@ -418,9 +467,10 @@ function renderView() {
   view.innerHTML = route.render();
   // The diary gets a wider canvas and stretches to fill the screen.
   view.classList.toggle('view--diary', route.id === 'diary');
-  // Caseload fills the screen so a long list scrolls in place, not the page.
-  view.classList.toggle('view--caseload', route.id === 'caseload');
-  view.classList.toggle('view--caseload-table', route.id === 'caseload' && state.settings.caseloadView.mode === 'table');
+  // Caseload-style views fill the screen so a long list scrolls in place, not the page.
+  const caseView = route.id === 'caseload' || route.id === 'supervision';
+  view.classList.toggle('view--caseload', caseView);
+  view.classList.toggle('view--caseload-table', caseView && caseloadConfig(route.id).mode === 'table');
   const scroller = view.querySelector('.caseload-table-scroll');
   if (scroller && prevScroll) scroller.scrollTop = prevScroll;
   renderNav();
@@ -452,16 +502,13 @@ function countDueToday() {
   const today = todayISO();
   return activeTasks().filter((t) => t.dueDate === today).length;
 }
-function pinnedPatients() {
-  return state.patients.filter((p) => p.pinnedToToday);
-}
 
 /** Patients past the wait warning — same rule as the Caseload "Long waits" filter. */
 function longWaitPatients() {
   const threshold = Number(state.settings.waitWarningDays) || 42;
   return state.patients
-    .filter((p) => (Number(p.daysInStage) || 0) >= threshold)
-    .sort((a, b) => (Number(b.daysInStage) || 0) - (Number(a.daysInStage) || 0));
+    .filter((p) => daysInStageOf(p) >= threshold)
+    .sort((a, b) => daysInStageOf(b) - daysInStageOf(a));
 }
 
 /* --------------------------------------------------------------------------
@@ -494,7 +541,7 @@ function dueProximity(iso) {
 function taskScore(t) {
   const w = state.settings.weights || DEFAULT_WEIGHTS;
   const p = t.patientId ? state.patients.find((x) => x.patientId === t.patientId) : null;
-  const wait = Math.min(Number(p && p.daysInStage) || 0, 120);
+  const wait = Math.min(daysInStageOf(p), 120);
   const dread = Number(t.dreadScore) || 0;
   const est = Number(t.estimatedMinutes) || 0;
   const prio = t.priority === 'high' ? 2 : t.priority === 'low' ? 0 : 1;
@@ -507,7 +554,7 @@ const isDueToday = (t) => !!t.dueDate && t.dueDate === todayISO();
 function patientBreach(t) {
   if (!t.patientId) return false;
   const p = state.patients.find((x) => x.patientId === t.patientId);
-  return !!p && (Number(p.daysInStage) || 0) >= (state.settings.waitWarningDays || 42);
+  return !!p && daysInStageOf(p) >= (state.settings.waitWarningDays || 42);
 }
 function isUrgent(t) {
   return isOverdue(t) || isDueToday(t) || patientBreach(t) || t.priority === 'high';
@@ -582,11 +629,33 @@ function statList(rows) {
   </ul>`;
 }
 
-function sectionPanel(title, tone, listHTML) {
-  return `<div class="panel panel--${tone}">
-    <div class="panel__title">${esc(title)}</div>
-    <div class="panel__list">${listHTML}</div>
+/**
+ * A titled card. Pass an `id` to make the header a collapse toggle: the body
+ * folds away to just the title, and the folded state is remembered per id in
+ * settings.todayCollapsed.
+ */
+function sectionPanel(title, tone, listHTML, { id = null, collapsed = false } = {}) {
+  if (!id) {
+    return `<div class="panel panel--${tone}">
+      <div class="panel__title">${esc(title)}</div>
+      <div class="panel__list">${listHTML}</div>
+    </div>`;
+  }
+  const bodyId = `card-body-${id}`;
+  return `<div class="panel panel--${tone}${collapsed ? ' panel--collapsed' : ''}">
+    <button type="button" class="panel__title panel__title--btn" data-action="toggle-card"
+            data-card="${esc(id)}" aria-expanded="${collapsed ? 'false' : 'true'}"
+            aria-controls="${bodyId}" title="${collapsed ? 'Expand' : 'Collapse'} card">
+      <span class="panel__title-text">${esc(title)}</span>
+      <span class="panel__chevron" aria-hidden="true">${icon('chevron')}</span>
+    </button>
+    <div class="panel__list" id="${bodyId}">${listHTML}</div>
   </div>`;
+}
+
+/** Has the given Today card been folded to its title? */
+function isCardCollapsed(id) {
+  return !!(state.settings.todayCollapsed && state.settings.todayCollapsed[id]);
 }
 
 /** Inline quick-add bar: type + Enter. Shared by the Tasks and Today views. */
@@ -686,13 +755,13 @@ function focusTaskRow(t, kind) {
   </li>`;
 }
 
-/** A patient row with a send-to-Today toggle (Long waits modal + Today's pinned section). */
-function patientPinRow(p) {
-  const days = Number(p.daysInStage) || 0;
-  const pinned = !!p.pinnedToToday;
+/** A patient row with a "send to supervision" button (Long waits modal). */
+function patientSupervisionRow(p) {
+  const days = daysInStageOf(p);
+  const awaiting = (p.cmsStatus || '') === 'Awaiting';
   const open = tasksFor(p.patientId).filter((t) => !t.isCompleted).length;
   const meta = [p.pathway || 'No pathway', `${days} days`, open ? `${open} open` : 'none open'];
-  const pinLabel = pinned ? 'Remove from today’s list' : 'Send to today’s list';
+  const label = awaiting ? 'Already awaiting supervision' : 'Send to supervision (CMS status: Awaiting)';
   return `<li class="task-row" data-patient="${esc(p.patientId)}">
     ${tagSwatch(p.colorTag)}
     <div class="task-row__main">
@@ -703,10 +772,10 @@ function patientPinRow(p) {
       <span class="task-row__title">${esc(p.patientId)}</span>
     </div>
     <div class="task-row__actions">
-      <button class="btn btn--sm ${pinned ? '' : 'btn--primary'}"
-              data-action="send-today" data-id="${esc(p.patientId)}"
-              aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">
-        ${pinned ? '✓ In today' : '＋ Today’s list'}
+      <button class="btn btn--sm ${awaiting ? '' : 'btn--primary'}"
+              data-action="send-supervision" data-id="${esc(p.patientId)}"
+              aria-pressed="${awaiting}" aria-label="${label}" title="${label}">
+        ${awaiting ? '✓ Awaiting' : '＋ Supervision'}
       </button>
       <button class="btn--icon" data-action="open-drawer" data-id="${esc(p.patientId)}"
               aria-label="Open details" title="Open details">${icon('caseload')}</button>
@@ -763,9 +832,9 @@ function openLongWaitModal(focusPatientId) {
   const threshold = Number(state.settings.waitWarningDays) || 42;
   const body = `
     <p class="modal__hint">Patients at ${threshold}+ days in their current stage.
-      Send the ones you want to focus on to Today’s list.</p>
+      Send the ones you want to review to Supervision (sets their CMS status to “Awaiting”).</p>
     ${list.length
-      ? `<ul class="task-list">${list.map(patientPinRow).join('')}</ul>`
+      ? `<ul class="task-list">${list.map(patientSupervisionRow).join('')}</ul>`
       : '<p class="field-row__hint">No patients past the wait warning. 🎉</p>'}`;
   openModal({
     title: `⏳ Long waits — ${list.length} patient${list.length === 1 ? '' : 's'}`,
@@ -775,7 +844,7 @@ function openLongWaitModal(focusPatientId) {
   focusModalKind = 'longwait';
   if (focusPatientId) {
     const id = window.CSS && CSS.escape ? CSS.escape(focusPatientId) : focusPatientId;
-    const btn = document.querySelector(`#modal-root [data-action="send-today"][data-id="${id}"]`);
+    const btn = document.querySelector(`#modal-root [data-action="send-supervision"][data-id="${id}"]`);
     if (btn) btn.focus();
   }
 }
@@ -913,21 +982,18 @@ function renderToday() {
     <p class="field-row__hint"><span class="plan-key plan-key--planned"></span>${planMinutes} min planned of ${budget} min working day · <span class="plan-key plan-key--booked"></span>${hoursLabel(booked)} booked in diary · ${hoursLabel(freeMin)} free.</p>
     ${plan.length
       ? `<ul class="task-list">${plan.map((t) => taskItem(t, { allocated: true })).join('')}</ul>`
-      : '<p class="field-row__hint">Nothing planned yet — due-today tasks are added automatically; otherwise accept a suggestion or pin a task.</p>'}`));
-
-  const pinned = pinnedPatients().slice().sort((a, b) => patientScore(b.patientId) - patientScore(a.patientId));
-  if (pinned.length) {
-    sections.splice(1, 0, sectionPanel('📌 Pinned patients', 'accent',
-      `<ul class="task-list">${pinned.map(patientPinRow).join('')}</ul>`));
-  }
+      : '<p class="field-row__hint">Nothing planned yet — due-today tasks are added automatically; otherwise accept a suggestion or pin a task.</p>'}`,
+    { id: 'plan', collapsed: isCardCollapsed('plan') }));
 
   if (dueUnplanned.length) {
     sections.push(sectionPanel('📅 Due today', 'accent',
-      `<ul class="task-list">${dueUnplanned.map((t) => taskItem(t, { allocated: plannedToday(t) })).join('')}</ul>`));
+      `<ul class="task-list">${dueUnplanned.map((t) => taskItem(t, { allocated: plannedToday(t) })).join('')}</ul>`,
+      { id: 'due', collapsed: isCardCollapsed('due') }));
   }
   if (urgent.length) {
     sections.push(sectionPanel('🔥 Urgent — long waits / high priority', 'warning',
-      `<ul class="task-list">${urgent.map((t) => taskItem(t, { allocated: plannedToday(t) })).join('')}</ul>`));
+      `<ul class="task-list">${urgent.map((t) => taskItem(t, { allocated: plannedToday(t) })).join('')}</ul>`,
+      { id: 'urgent', collapsed: isCardCollapsed('urgent') }));
   }
 
   if (suggestions.length) {
@@ -935,7 +1001,8 @@ function renderToday() {
       <div class="btn-row" style="margin-bottom:var(--space-3)">
         <button class="btn" data-action="accept-suggestions">Add all suggestions</button>
       </div>
-      <ul class="task-list">${suggestions.map((t) => taskItem(t)).join('')}</ul>`));
+      <ul class="task-list">${suggestions.map((t) => taskItem(t)).join('')}</ul>`,
+      { id: 'suggested', collapsed: isCardCollapsed('suggested') }));
   }
 
   const nothing = !overdue.length && !dueToday.length && !urgent.length && !quick.length && !plan.length;
@@ -1007,7 +1074,7 @@ function groupTasksForTable(list) {
 function groupRowHTML(g) {
   let sub = '';
   if (g.patient) {
-    const days = Number(g.patient.daysInStage) || 0;
+    const days = daysInStageOf(g.patient);
     const breach = days >= (state.settings.waitWarningDays || 42);
     sub = `<span class="group-sub">${esc(g.patient.pathway || 'No pathway')} · ${days} day${days === 1 ? '' : 's'}${breach ? ' · ⚠ breach' : ''}</span>`;
   }
@@ -1197,13 +1264,26 @@ function activeCount(patientId) {
   return tasksFor(patientId).filter((t) => !t.isCompleted).length;
 }
 
-/** Copy patients, filtered + sorted per the caseload view settings. */
-function caseloadList() {
-  const cfg = state.settings.caseloadView;
+/** True when the patient carries a CMS status (i.e. belongs in Supervision). */
+const hasCmsStatus = (p) => !!p && String(p.cmsStatus || '').trim() !== '';
+
+/** View-prefs slice backing whichever caseload-style view is on screen. */
+function caseloadConfig(viewId = currentRouteId()) {
+  return viewId === 'supervision' ? state.settings.supervisionView : state.settings.caseloadView;
+}
+
+/** The patients a caseload-style view draws from (Supervision is CMS-only). */
+function caseloadPatients(viewId = currentRouteId()) {
+  return viewId === 'supervision' ? state.patients.filter(hasCmsStatus) : state.patients;
+}
+
+/** Copy patients, filtered + sorted per the given view's settings. */
+function caseloadList(viewId = currentRouteId()) {
+  const cfg = caseloadConfig(viewId);
   const q = (cfg.search || '').toLowerCase();
-  const list = state.patients.filter((p) =>
+  const list = caseloadPatients(viewId).filter((p) =>
     (cfg.pathway === 'all' || p.pathway === cfg.pathway) &&
-    (!cfg.breachOnly || (Number(p.daysInStage) || 0) >= (Number(state.settings.waitWarningDays) || 42)) &&
+    (!cfg.breachOnly || daysInStageOf(p) >= (Number(state.settings.waitWarningDays) || 42)) &&
     (!q || p.name.toLowerCase().includes(q) || p.patientId.toLowerCase().includes(q))
   );
   const dir = cfg.dir === 'asc' ? 1 : -1;
@@ -1213,32 +1293,42 @@ function caseloadList() {
     else if (cfg.sortKey === 'patientId') cmp = String(a.patientId).localeCompare(String(b.patientId));
     else if (cfg.sortKey === 'tasks') cmp = activeCount(a.patientId) - activeCount(b.patientId);
     else if (cfg.sortKey === 'score') cmp = patientScore(a.patientId) - patientScore(b.patientId);
-    else cmp = (Number(a.daysInStage) || 0) - (Number(b.daysInStage) || 0); // daysInStage (default)
+    else cmp = daysInStageOf(a) - daysInStageOf(b); // daysInStage (default)
     return cmp * dir || (a.name || '').localeCompare(b.name || '');
   });
 }
 
-/** Group a sorted list by pathway or status. */
+/** Group a sorted list by pathway, status or CMS status. */
 function groupPatients(list, key) {
   const groups = new Map();
+  const label = key === 'status' ? (p) => p.status || 'No status'
+    : key === 'cmsStatus' ? (p) => p.cmsStatus || 'No CMS status'
+    : (p) => p.pathway || 'No pathway';
   for (const p of list) {
-    const g = key === 'status' ? (p.status || 'No status') : (p.pathway || 'No pathway');
+    const g = label(p);
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g).push(p);
   }
   return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
-function renderCaseload() {
-  const cfg = state.settings.caseloadView;
+function renderCaseload() { return caseloadViewHTML('caseload'); }
+function renderSupervision() { return caseloadViewHTML('supervision'); }
+
+/** Shared shell for the Caseload and Supervision views. */
+function caseloadViewHTML(viewId) {
+  const cfg = caseloadConfig(viewId);
+  const isSupervision = viewId === 'supervision';
   const head = `
     <header class="view__head">
-      <h1 class="view__title">Caseload</h1>
-      <p class="view__subtitle">Sort, group, colour-code and route patients to Today's list.</p>
-      <div class="btn-row" style="margin-top:var(--space-3)">
+      <h1 class="view__title">${isSupervision ? 'Supervision' : 'Caseload'}</h1>
+      <p class="view__subtitle">${isSupervision
+        ? 'Only patients carrying a CMS status — every caseload control works here too.'
+        : 'Sort, group and colour-code your caseload, and send patients to Supervision.'}</p>
+      ${isSupervision ? '' : `<div class="btn-row" style="margin-top:var(--space-3)">
         <button class="btn btn--primary" data-action="open-import">Import CSV</button>
         <button class="btn" data-action="new-patient">＋ Add patient</button>
-      </div>
+      </div>`}
     </header>`;
 
   if (!state.patients.length) {
@@ -1253,7 +1343,18 @@ function renderCaseload() {
     });
   }
 
-  const pathways = [...new Set(state.patients.map((p) => p.pathway).filter(Boolean))].sort();
+  const pool = caseloadPatients(viewId);
+
+  if (isSupervision && !pool.length) {
+    return head + emptyState({
+      icon: '🛡️',
+      title: 'Nobody in supervision yet',
+      text: 'Add a CMS status on a patient (in Caseload → open a patient → Details), or map a CMS column when importing a CSV. Patients with a CMS status show up here.',
+      actions: `<button class="btn" data-action="goto-caseload">Go to Caseload</button>`,
+    });
+  }
+
+  const pathways = [...new Set(pool.map((p) => p.pathway).filter(Boolean))].sort();
 
   const pathwayTabs = pathways.map((p) => `
     <button class="path-tab ${cfg.pathway === p ? 'path-tab--on' : ''}" data-action="path-tab" data-pathway="${esc(p)}">${esc(p)}</button>`).join('');
@@ -1277,24 +1378,29 @@ function renderCaseload() {
           <select data-action="group-caseload">
             <option value="none" ${cfg.groupBy === 'none' ? 'selected' : ''}>None</option>
             <option value="pathway" ${cfg.groupBy === 'pathway' ? 'selected' : ''}>Pathway</option>
-            <option value="status" ${cfg.groupBy === 'status' ? 'selected' : ''}>Status</option>
+            ${isSupervision
+              ? `<option value="cmsStatus" ${cfg.groupBy === 'cmsStatus' ? 'selected' : ''}>CMS status</option>`
+              : `<option value="status" ${cfg.groupBy === 'status' ? 'selected' : ''}>Status</option>`}
           </select>
         </label>` : ''}
     </div>`;
 
-  return head + controls + `<div id="caseload-body">${caseloadBodyHTML()}</div>`;
+  return head + controls + `<div id="caseload-body">${caseloadBodyHTML(viewId)}</div>`;
 }
 
 /** Render only the table/cards area (used by live search to keep focus). */
-function caseloadBodyHTML() {
-  const cfg = state.settings.caseloadView;
+function caseloadBodyHTML(viewId = currentRouteId()) {
+  const cfg = caseloadConfig(viewId);
+  const list = caseloadList(viewId);
   return cfg.mode === 'cards'
-    ? renderPatientCards(caseloadList())
-    : renderPatientTable(caseloadList(), cfg);
+    ? renderPatientCards(list, viewId)
+    : renderPatientTable(list, cfg, viewId);
 }
 
 /* ---- Table view --------------------------------------------------- */
-function renderPatientTable(list, cfg) {
+function renderPatientTable(list, cfg, viewId = 'caseload') {
+  const showCms = viewId === 'supervision';
+  const cols = showCms ? 9 : 8;
   const th = (key, label) => {
     const on = cfg.sortKey === key;
     const arrow = on ? (cfg.dir === 'asc' ? ' ▲' : ' ▼') : '';
@@ -1306,7 +1412,7 @@ function renderPatientTable(list, cfg) {
   };
 
   const rowHTML = (p) => {
-    const breach = (Number(p.daysInStage) || 0) >= (state.settings.waitWarningDays || 42);
+    const breach = daysInStageOf(p) >= (state.settings.waitWarningDays || 42);
     const menuOpen = caseloadMenuId === p.patientId;
     const menu = menuOpen ? rowMenuHTML(p) : '';
     const tagged = p.colorTag ? ' caseload-row--tagged' : '';
@@ -1315,7 +1421,8 @@ function renderPatientTable(list, cfg) {
       <td class="mono"><span class="id-wrap">${tagSwatch(p.colorTag)}<span>${esc(p.patientId)}</span></span></td>
       <td><button class="link-btn" data-action="open-drawer" data-id="${esc(p.patientId)}">${esc(p.name)}</button></td>
       <td>${esc(p.pathway || '—')}</td>
-      <td class="${breach ? 'wait-badge wait-badge--danger' : ''}">${esc(p.daysInStage ?? '—')}${breach ? ' ⚠' : ''}</td>
+      ${showCms ? `<td>${hasCmsStatus(p) ? esc(p.cmsStatus) : '—'}</td>` : ''}
+      <td class="${breach ? 'wait-badge wait-badge--danger' : ''}">${esc(daysInStageOf(p))}${breach ? ' ⚠' : ''}</td>
       <td class="row-tasks">${patientTasksHTML(p)}</td>
       <td class="num">${patientScore(p.patientId) ? Math.round(patientScore(p.patientId)) : '—'}</td>
       <td class="row-actions">
@@ -1332,7 +1439,7 @@ function renderPatientTable(list, cfg) {
     tbody = list.map(rowHTML).join('');
   } else {
     tbody = groupPatients(list, cfg.groupBy).map(([g, items]) => `
-      <tr class="group-row"><td colspan="8">${esc(g)} <span class="group-count">${items.length}</span></td></tr>
+      <tr class="group-row"><td colspan="${cols}">${esc(g)} <span class="group-count">${items.length}</span></td></tr>
       ${items.map(rowHTML).join('')}`).join('');
   }
 
@@ -1344,6 +1451,7 @@ function renderPatientTable(list, cfg) {
             ${th('patientId', 'ID')}
             ${th('name', 'Name')}
             <th scope="col">Pathway</th>
+            ${showCms ? '<th scope="col">CMS status</th>' : ''}
             ${th('daysInStage', 'Days in stage')}
             ${th('tasks', 'Tasks')}
             ${th('score', 'Priority')}
@@ -1354,18 +1462,18 @@ function renderPatientTable(list, cfg) {
         </table>
       </div>
       <p class="field-row__hint" style="margin-top:var(--space-3)">
-        ${list.length} of ${state.patients.length} patient${state.patients.length === 1 ? '' : 's'} shown.
+        ${list.length} of ${caseloadPatients(viewId).length} patient${caseloadPatients(viewId).length === 1 ? '' : 's'} shown.
       </p>
     </div>`;
 }
 
 /* ---- Card view ---------------------------------------------------- */
-function renderPatientCards(list) {
+function renderPatientCards(list, viewId = 'caseload') {
   if (!list.length) return `<div class="panel"><p class="field-row__hint">No patients match this filter.</p></div>`;
   return `
     <div class="patient-grid">
       ${list.map((p) => {
-        const days = Number(p.daysInStage) || 0;
+        const days = daysInStageOf(p);
         const breach = days >= (state.settings.waitWarningDays || 42);
         const overdue = tasksFor(p.patientId).some((t) => !t.isCompleted && t.dueDate && t.dueDate < todayISO());
         const menuOpen = caseloadMenuId === p.patientId;
@@ -1381,9 +1489,9 @@ function renderPatientCards(list) {
           <button class="patient-card__name" data-action="open-drawer" data-id="${esc(p.patientId)}">${esc(p.name)}</button>
           <div class="patient-card__chips">
             <span class="chip">${esc(p.pathway || 'No pathway')}</span>
+            ${hasCmsStatus(p) ? `<span class="chip" title="CMS status">🛡 ${esc(p.cmsStatus)}</span>` : ''}
             <span class="chip ${breach ? 'chip--danger' : ''}">⏱ ${days} days</span>
             ${patientScore(p.patientId) ? `<span class="chip" title="ADHD priority score">▲ ${Math.round(patientScore(p.patientId))}</span>` : ''}
-            ${p.pinnedToToday ? '<span class="chip chip--accent">📌 Today</span>' : ''}
             ${overdue ? '<span class="chip chip--danger">⚠ overdue</span>' : ''}
           </div>
           ${patientTasksHTML(p)}
@@ -1409,8 +1517,8 @@ function rowMenuHTML(p) {
         </label>
       </div>
       <div class="row-menu__label">Actions</div>
-      <button class="row-menu__item" data-action="send-today" data-id="${esc(p.patientId)}">
-        ${p.pinnedToToday ? '✓ Remove from Today’s list' : 'Send to Today’s list'}
+      <button class="row-menu__item" data-action="send-supervision" data-id="${esc(p.patientId)}">
+        ${(p.cmsStatus || '') === 'Awaiting' ? '✓ Awaiting supervision' : 'Send to supervision'}
       </button>
       <button class="row-menu__item" data-action="add-task" data-id="${esc(p.patientId)}">＋ Add task</button>
       <button class="row-menu__item" data-action="open-drawer" data-id="${esc(p.patientId)}">Open details</button>
@@ -1549,12 +1657,13 @@ function patientTasksHTML(p) {
 function renderDrawer() {
   const p = state.patients.find((x) => x.patientId === drawerPatientId);
   if (!p) { closeDrawer(); return; }
-  const days = Number(p.daysInStage) || 0;
+  const days = daysInStageOf(p);
   const breach = days >= (state.settings.waitWarningDays || 42);
   const taskList = `<div id="drawer-tasks">${drawerTasksHTML(p)}</div>`;
   // Suggestions for the free-text fields, drawn from what's already in use.
   const pathways = [...new Set(state.patients.map((x) => x.pathway).filter(Boolean))].sort();
   const statuses = [...new Set(state.patients.map((x) => x.status).filter(Boolean))].sort();
+  const cmsValues = [...new Set(state.patients.map((x) => x.cmsStatus).filter(Boolean))].sort();
   const paletteOpts = CASELOAD_PALETTE.map(([c, title]) =>
     `<option value="${esc(c)}" ${(p.colorTag || '') === c ? 'selected' : ''}>${esc(title)}</option>`).join('');
 
@@ -1568,7 +1677,7 @@ function renderDrawer() {
         <span class="chip">${esc(p.pathway || 'No pathway')}</span>
         <span class="chip ${breach ? 'chip--danger' : ''}">⏱ ${days} days in stage</span>
         <span class="chip">${esc(p.status || '—')}</span>
-        ${p.pinnedToToday ? '<span class="chip chip--accent">📌 Today</span>' : ''}
+        ${hasCmsStatus(p) ? `<span class="chip" title="CMS status">🛡 ${esc(p.cmsStatus)}</span>` : ''}
       </div>
     </div>
 
@@ -1589,8 +1698,15 @@ function renderDrawer() {
                    placeholder="e.g. Active" value="${esc(p.status || '')}" />
             <datalist id="drawer-status-options">${statuses.map((x) => `<option value="${esc(x)}"></option>`).join('')}</datalist>
           </label>
+          <label>CMS status
+            <input id="drawer-cms" type="text" list="drawer-cms-options" autocomplete="off"
+                   placeholder="e.g. In supervision" value="${esc(p.cmsStatus || '')}"
+                   title="Shows the patient in the Supervision view" />
+            <datalist id="drawer-cms-options">${cmsValues.map((x) => `<option value="${esc(x)}"></option>`).join('')}</datalist>
+          </label>
           <label>Days in stage
-            <input id="drawer-days" type="number" min="0" step="1" value="${days}" />
+            <input id="drawer-days" type="number" min="0" step="1" value="${days}"
+                   title="Counts up by one automatically each day since it was last set" />
           </label>
           <label>Colour tag
             <select id="drawer-color">${paletteOpts}</select>
@@ -1625,8 +1741,8 @@ function renderDrawer() {
 
     <div class="drawer__section">
       <div class="btn-row">
-        <button class="btn" data-action="send-today" data-id="${esc(p.patientId)}">
-          ${p.pinnedToToday ? '✓ Remove from Today' : 'Send to Today'}
+        <button class="btn" data-action="send-supervision" data-id="${esc(p.patientId)}">
+          ${(p.cmsStatus || '') === 'Awaiting' ? '✓ Awaiting supervision' : 'Send to supervision'}
         </button>
         <button class="btn btn--danger" data-action="delete-patient" data-id="${esc(p.patientId)}">Delete patient</button>
       </div>
@@ -1634,19 +1750,24 @@ function renderDrawer() {
 }
 
 /**
- * Update the pin ("On Today's list") affordances in an open drawer without a
+ * Update the "send to supervision" affordances in an open drawer without a
  * full re-render, so any unsaved edits in the form are preserved.
  */
-function refreshDrawerPin(p) {
-  const btn = document.querySelector('.drawer [data-action="send-today"]');
-  if (btn) btn.textContent = p.pinnedToToday ? '✓ Remove from Today' : 'Send to Today';
+function refreshDrawerSupervision(p) {
+  const awaiting = (p.cmsStatus || '') === 'Awaiting';
+  const btn = document.querySelector('.drawer [data-action="send-supervision"]');
+  if (btn) btn.textContent = awaiting ? '✓ Awaiting supervision' : 'Send to supervision';
+  const input = document.querySelector('#drawer-cms');
+  if (input) input.value = p.cmsStatus || '';
   const chips = document.querySelector('.drawer__head .patient-card__chips');
   if (chips) {
-    const existing = chips.querySelector('.chip--accent');
-    if (p.pinnedToToday && !existing) {
-      chips.insertAdjacentHTML('beforeend', '<span class="chip chip--accent">📌 Today</span>');
-    } else if (!p.pinnedToToday && existing) {
-      existing.remove();
+    const chip = chips.querySelector('.chip[title="CMS status"]');
+    if (p.cmsStatus) {
+      const html = `<span class="chip" title="CMS status">🛡 ${esc(p.cmsStatus)}</span>`;
+      if (chip) chip.outerHTML = html;
+      else chips.insertAdjacentHTML('beforeend', html);
+    } else if (chip) {
+      chip.remove();
     }
   }
 }
@@ -1881,12 +2002,13 @@ function openPatientModal(patientId = null) {
 
   const pathways = [...new Set(state.patients.map((p) => p.pathway).filter(Boolean))].sort();
   const statuses = [...new Set(state.patients.map((p) => p.status).filter(Boolean))].sort();
+  const cmsValues = [...new Set(state.patients.map((p) => p.cmsStatus).filter(Boolean))].sort();
   const currentColor = existing ? (existing.colorTag || '') : '';
   const paletteOpts = CASELOAD_PALETTE.map(([c, title]) =>
     `<option value="${esc(c)}" ${currentColor === c ? 'selected' : ''}>${esc(title)}</option>`).join('');
 
   const v = existing || {
-    name: '', patientId: suggestedPatientId(), pathway: '', daysInStage: 0, status: '', colorTag: '',
+    name: '', patientId: suggestedPatientId(), pathway: '', daysInStage: 0, status: '', cmsStatus: '', colorTag: '',
   };
 
   openModal({
@@ -1916,8 +2038,15 @@ function openPatientModal(patientId = null) {
                    autocomplete="off" value="${esc(v.status || '')}" />
             <datalist id="patient-status-options">${statuses.map((s) => `<option value="${esc(s)}"></option>`).join('')}</datalist>
           </label>
+          <label>CMS status
+            <input id="patient-cms" type="text" list="patient-cms-options" placeholder="e.g. In supervision"
+                   autocomplete="off" value="${esc(v.cmsStatus || '')}"
+                   title="Shows the patient in the Supervision view" />
+            <datalist id="patient-cms-options">${cmsValues.map((s) => `<option value="${esc(s)}"></option>`).join('')}</datalist>
+          </label>
           <label>Days in stage
-            <input id="patient-days" type="number" min="0" step="1" value="${Number(v.daysInStage) || 0}" />
+            <input id="patient-days" type="number" min="0" step="1" value="${daysInStageOf(v)}"
+                   title="Counts up by one automatically each day since it was last set" />
           </label>
           <label>Colour tag
             <select id="patient-color">${paletteOpts}</select>
@@ -1938,6 +2067,7 @@ function submitPatient() {
   if (!name) { toast('Give the patient a name.', 'error'); return; }
   const pathway = (($('#patient-pathway') || {}).value || '').trim();
   const status = (($('#patient-status') || {}).value || '').trim();
+  const cmsStatus = (($('#patient-cms') || {}).value || '').trim();
   const daysInStage = Math.max(0, Number(($('#patient-days') || {}).value) || 0);
   const colorTag = (($('#patient-color') || {}).value) || null;
   const now = new Date().toISOString();
@@ -1948,7 +2078,9 @@ function submitPatient() {
       p.name = name;
       p.pathway = pathway;
       p.status = status;
+      p.cmsStatus = cmsStatus;
       p.daysInStage = daysInStage;
+      p.daysInStageAsOf = todayISO();
       p.colorTag = colorTag;
       p.updatedAt = now;
       toast('Patient updated.');
@@ -1960,8 +2092,9 @@ function submitPatient() {
       return;
     }
     state.patients.push({
-      patientId: pid, name, pathway, daysInStage, status,
-      colorTag, pinnedToToday: false, notes: '', updatedAt: now,
+      patientId: pid, name, pathway, daysInStage, status, cmsStatus,
+      colorTag, notes: '', updatedAt: now,
+      daysInStageAsOf: todayISO(),
     });
     toast('Patient added.', 'success');
   }
@@ -2181,7 +2314,16 @@ function nextUpCard(iso) {
 }
 
 /** Reposition the live "now" lines and refresh the up-next card. */
+let lastTickDate = todayISO();
+
 function tickDiaryClocks() {
+  // If the clock has rolled past midnight, refresh the view so day-based
+  // figures (days in stage, due dates, "today" markers) update in place.
+  const today = todayISO();
+  if (today !== lastTickDate) {
+    lastTickDate = today;
+    renderView();
+  }
   const now = nowMinutes();
   document.querySelectorAll('[data-now-line]').forEach((el) => {
     const start = Number(el.dataset.dayStart) || 0;
@@ -3113,6 +3255,7 @@ function importJSON(file) {
         throw new Error('Not a Caseload Manager backup');
       }
       state = migrate(data);
+      seedStageAnchors();
       await save();
       toast('Backup restored successfully.', 'success');
     } catch (err) {
@@ -3135,6 +3278,7 @@ const FIELD_ALIASES = {
   pathway:     ['pathway', 'currentstage', 'stage', 'pathwaystage', 'currentpathway', 'step', 'steptype', 'treatmentpathway'],
   daysInStage: ['daysinstage', 'dayswaiting', 'waitingdays', 'days', 'waitingtime', 'timeinstage', 'timeinpathway', 'daysawaiting', 'daysinstep'],
   status:      ['status', 'currentstatus', 'casestatus', 'dischargestatus', 'caseloadstatus', 'pathwaystatus'],
+  cmsStatus:   ['cmsstatus', 'cms', 'supervision', 'supervisionstatus', 'cmssupervision', 'supervisionstage'],
 };
 
 const normalizeHeader = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -3233,23 +3377,26 @@ function upsertPatients(headers, rows, mapping) {
     const name = get('name', i, patientId);
     const pathway = get('pathway', i);
     const status = get('status', i);
+    const cmsStatus = get('cmsStatus', i);
     const daysParsed = Number(get('daysInStage', i, '0'));
     const daysInStage = Number.isFinite(daysParsed) ? daysParsed : 0;
 
     const existing = state.patients.find((p) => p.patientId === patientId);
     if (existing) {
-      // Update live fields only — never touch tasks, colorTag, pinnedToToday or notes.
+      // Update live fields only — never touch tasks, colorTag or notes.
       existing.name = name;
       if (pathway) existing.pathway = pathway;
       existing.daysInStage = daysInStage;   // refresh wait time each import
+      existing.daysInStageAsOf = todayISO(); // ...and restart its daily tick
       if (status) existing.status = status;
+      if (cmsStatus) existing.cmsStatus = cmsStatus;
       existing.updatedAt = now;
       summary.updated++;
     } else {
       state.patients.push({
-        patientId, name, pathway, daysInStage, status,
-        colorTag: null, pinnedToToday: false, notes: '',
-        updatedAt: now,
+        patientId, name, pathway, daysInStage, status, cmsStatus,
+        colorTag: null, notes: '',
+        updatedAt: now, daysInStageAsOf: todayISO(),
       });
       summary.added++;
     }
@@ -3337,6 +3484,7 @@ function renderImportMapping() {
     ['pathway', 'Pathway / stage'],
     ['daysInStage', 'Days in stage / waiting time'],
     ['status', 'Status'],
+    ['cmsStatus', 'CMS status'],
   ];
 
   const preview = s.rows.slice(0, 5);
@@ -3411,10 +3559,10 @@ function runImport() {
 }
 
 function downloadSampleCSV() {
-  const sample = 'Patient ID,Name,Current Stage,Days in Stage,Status\n' +
-    'IAP-2001,Example Patient,Assessment,12,Active\n' +
-    'IAP-2002,Second Example Patient,Treatment,30,Active\n' +
-    'IAP-2003,Waiting List Example,Waiting List,64,Waiting\n';
+  const sample = 'Patient ID,Name,Current Stage,Days in Stage,Status,CMS Status\n' +
+    'IAP-2001,Example Patient,Assessment,12,Active,In supervision\n' +
+    'IAP-2002,Second Example Patient,Treatment,30,Active,\n' +
+    'IAP-2003,Waiting List Example,Waiting List,64,Waiting,Awaiting supervision\n';
   const blob = new Blob([sample], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3434,17 +3582,17 @@ function buildDemoState() {
   const s = defaultState();
   const today = todayISO();
   const people = [
-    ['IAP-1001', 'Alex Morgan',  'Treatment',    42, 'Active'],
-    ['IAP-1002', 'Priya Shah',   'Assessment',    9, 'Active'],
-    ['IAP-1003', 'Tom Reed',     'Waiting List', 67, 'Waiting'],
-    ['IAP-1004', 'Grace Okafor', 'Treatment',    21, 'Active'],
-    ['IAP-1005', 'Sam Whitfield','Assessment',    3, 'Active'],
+    ['IAP-1001', 'Alex Morgan',  'Treatment',    42, 'Active',  'Weekly'],
+    ['IAP-1002', 'Priya Shah',   'Assessment',    9, 'Active',  ''],
+    ['IAP-1003', 'Tom Reed',     'Waiting List', 67, 'Waiting', 'Awaiting supervision'],
+    ['IAP-1004', 'Grace Okafor', 'Treatment',    21, 'Active',  'Fortnightly'],
+    ['IAP-1005', 'Sam Whitfield','Assessment',    3, 'Active',  ''],
   ];
   const colors = ['#0f766e', '#b4690e', '#2a5db0', '#7c3aed', '#c0342b'];
-  s.patients = people.map(([id, name, pathway, days, status], i) => ({
-    patientId: id, name, pathway, daysInStage: days, status,
-    colorTag: colors[i % colors.length], pinnedToToday: i < 2,
-    notes: '', updatedAt: new Date().toISOString(),
+  s.patients = people.map(([id, name, pathway, days, status, cmsStatus], i) => ({
+    patientId: id, name, pathway, daysInStage: days, status, cmsStatus,
+    colorTag: colors[i % colors.length],
+    notes: '', updatedAt: new Date().toISOString(), daysInStageAsOf: today,
   }));
 
   s.tasks = [
@@ -3510,9 +3658,13 @@ document.addEventListener('click', async (e) => {
     case 'toggle-task': {
       const task = state.tasks.find((t) => t.taskId === el.dataset.id);
       if (task) {
-        task.isCompleted = !task.isCompleted;
-        task.completedAt = task.isCompleted ? new Date().toISOString() : null;
-        if (task.isCompleted) celebrate();
+        const completing = !task.isCompleted;
+        // Play the tick/shrink animation on the check before the list updates.
+        el.classList.add(completing ? 'task-row__check--checking' : 'task-row__check--unchecking');
+        await new Promise((r) => setTimeout(r, completing ? 240 : 180));
+        task.isCompleted = completing;
+        task.completedAt = completing ? new Date().toISOString() : null;
+        if (completing) celebrate();
         await save();
         refreshFocusModal();
       }
@@ -3618,6 +3770,18 @@ document.addEventListener('click', async (e) => {
       openFocusModal(el.dataset.focus);
       break;
     }
+    case 'toggle-card': {
+      const id = el.dataset.card;
+      const map = state.settings.todayCollapsed || (state.settings.todayCollapsed = {});
+      map[id] = !map[id];
+      // Toggle in place (keeps scroll position) and persist without a re-render.
+      const panel = el.closest('.panel');
+      if (panel) panel.classList.toggle('panel--collapsed', map[id]);
+      el.setAttribute('aria-expanded', map[id] ? 'false' : 'true');
+      el.title = `${map[id] ? 'Expand' : 'Collapse'} card`;
+      await Storage.save(state);
+      break;
+    }
     case 'smart-list': {
       state.settings.tasksView.filter = el.dataset.filter;
       closeSidebar();
@@ -3632,24 +3796,28 @@ document.addEventListener('click', async (e) => {
       if (currentRouteId() !== 'caseload') location.hash = '#/caseload';
       else await save();
       break;
+    case 'goto-caseload':
+      closeSidebar();
+      location.hash = '#/caseload';
+      break;
     case 'clear-breach':
-      state.settings.caseloadView.breachOnly = false;
+      caseloadConfig().breachOnly = false;
       await save();
       break;
 
-    // ---- Phase 3 caseload actions ----
+    // ---- Phase 3 caseload actions (Supervision keeps its own prefs) ----
     case 'set-caseload-mode':
-      state.settings.caseloadView.mode = el.dataset.mode;
+      caseloadConfig().mode = el.dataset.mode;
       caseloadMenuId = null;
       await save();
       break;
     case 'path-tab':
-      state.settings.caseloadView.pathway = el.dataset.pathway;
+      caseloadConfig().pathway = el.dataset.pathway;
       caseloadMenuId = null;
       await save();
       break;
     case 'sort-caseload': {
-      const cfg = state.settings.caseloadView;
+      const cfg = caseloadConfig();
       if (cfg.sortKey === el.dataset.key) cfg.dir = cfg.dir === 'asc' ? 'desc' : 'asc';
       else {
         cfg.sortKey = el.dataset.key;
@@ -3673,14 +3841,15 @@ document.addEventListener('click', async (e) => {
     case 'set-color':
       setPatientColor(el.dataset.id, el.dataset.color);
       break;
-    case 'send-today': {
+    case 'send-supervision': {
       const p = state.patients.find((x) => x.patientId === el.dataset.id);
       if (p) {
-        p.pinnedToToday = !p.pinnedToToday;
+        p.cmsStatus = 'Awaiting';
+        p.updatedAt = new Date().toISOString();
         caseloadMenuId = null;
-        toast(p.pinnedToToday ? `${p.name} sent to Today’s list.` : `${p.name} removed from Today’s list.`);
+        toast(`${p.name} sent to Supervision (CMS status: Awaiting).`, 'success');
         await save();
-        if (drawerPatientId === p.patientId) refreshDrawerPin(p);
+        if (drawerPatientId === p.patientId) refreshDrawerSupervision(p);
         refreshFocusModal(el.dataset.id);
       }
       break;
@@ -3814,8 +3983,10 @@ document.addEventListener('click', async (e) => {
       p.name = name;
       p.pathway = String(($('#drawer-pathway') || {}).value || '').trim();
       p.status = String(($('#drawer-status') || {}).value || '').trim();
+      p.cmsStatus = String(($('#drawer-cms') || {}).value || '').trim();
       const days = parseInt(($('#drawer-days') || {}).value, 10);
       p.daysInStage = Number.isFinite(days) && days > 0 ? days : 0;
+      p.daysInStageAsOf = todayISO();
       p.colorTag = ($('#drawer-color') || {}).value || null;
       p.updatedAt = new Date().toISOString();
       caseloadMenuId = null;
@@ -3912,8 +4083,8 @@ window.addEventListener('blur', () => hideDiaryHovers(null));
 // Live caseload search without losing input focus
 document.addEventListener('input', (e) => {
   const el = e.target.closest('[data-action="search-caseload"]');
-  if (!el || !state.settings.caseloadView) return;
-  state.settings.caseloadView.search = el.value;
+  if (!el) return;
+  caseloadConfig().search = el.value;
   const body = $('#caseload-body');
   if (body) body.innerHTML = caseloadBodyHTML();
 });
@@ -3960,7 +4131,7 @@ document.addEventListener('change', async (e) => {
     return;
   }
   if (el.dataset.action === 'group-caseload') {
-    state.settings.caseloadView.groupBy = el.value;
+    caseloadConfig().groupBy = el.value;
     caseloadMenuId = null;
     await save();
     return;
@@ -4171,8 +4342,11 @@ function registerServiceWorker() {
   const loaded = await Storage.load();
   const wasCorrupt = Storage.justRecovered;
   state = loaded || defaultState();
+  // Give any patient saved before the live wait counter a fresh anchor so their
+  // days in stage starts ticking from today (never jumping), then persist it.
+  const seededWaitAnchors = seedStageAnchors();
   // Auto-merge any due-today tasks into today's plan (once per day).
-  if (autoPlanDueToday()) await Storage.save(state);
+  if (autoPlanDueToday() || seededWaitAnchors) await Storage.save(state);
   if (!location.hash) location.hash = '#/today';
   render();
   registerServiceWorker();
