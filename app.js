@@ -1212,25 +1212,16 @@ const CASELOAD_PALETTE = [
  * relying on hue alone (red = triangle, amber = square, green = circle,
  * blue = diamond, purple = star; custom colours fall back to a circle).
  */
-const TAG_SHAPES = {
-  '#c0342b': 'tag--triangle',
-  '#b4690e': 'tag--square',
-  '#2f7d32': 'tag--circle',
-  '#2a5db0': 'tag--diamond',
-  '#7c3aed': 'tag--star',
-};
-function tagShapeClass(colorTag) {
-  return TAG_SHAPES[String(colorTag || '').toLowerCase()] || 'tag--custom';
-}
+const TAG_SHAPES = {};
 /** Human name for a palette colour (used as the swatch tooltip). */
 function paletteTitle(colorTag) {
   const hit = CASELOAD_PALETTE.find(([c]) => c && c.toLowerCase() === String(colorTag || '').toLowerCase());
   return hit ? hit[1] : 'Custom colour';
 }
-/** Colour + shape patient swatch (works in greyscale). Empty string when untagged. */
+/** Colour patient swatch. Empty string when untagged. */
 function tagSwatch(colorTag) {
   if (!colorTag) return '';
-  return `<span class="tag ${tagShapeClass(colorTag)}" style="--tag:${esc(colorTag)}" title="${esc(paletteTitle(colorTag))}" aria-hidden="true"></span>`;
+  return `<span class="tag" style="--tag:${esc(colorTag)}" title="${esc(paletteTitle(colorTag))}" aria-hidden="true"></span>`;
 }
 
 let caseloadMenuId = null;   // patient whose row/card menu is open
@@ -3023,11 +3014,49 @@ function toast(message, variant = 'info', ms = 3600) {
   setTimeout(() => el.remove(), ms);
 }
 
+/** Play a short thocky click sound on task completion. */
+function playTaskCompleteSound() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    // Low thock
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.05);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.08);
+    // Click
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'square';
+    osc2.frequency.setValueAtTime(800, now + 0.005);
+    osc2.frequency.exponentialRampToValueAtTime(400, now + 0.03);
+    gain2.gain.setValueAtTime(0.0001, now + 0.005);
+    gain2.gain.exponentialRampToValueAtTime(0.1, now + 0.007);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.005);
+    osc2.stop(now + 0.04);
+    setTimeout(() => { try { ctx.close(); } catch (e) {} }, 200);
+  } catch (e) {}
+}
+
 /** Small reward animation when a task is completed (respects reduced-motion). */
 function celebrate() {
   if (!state.settings.rewardAnimation) return;
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   toast('✅ Nice one!', 'success');
+  playTaskCompleteSound();
   if (reduce) return;
   const burst = document.createElement('div');
   burst.className = 'confetti';
