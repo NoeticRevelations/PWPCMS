@@ -2454,6 +2454,42 @@ function diaryDayHTML(date) {
       <p class="field-row__hint" style="margin-top:var(--space-3)">Click a slot (or drag across several) to add a block.</p>
     </div>`;
 
+  // Suggested tasks to drag into the day (day view only) - sorted by task score
+  let suggestions = activeTasks()
+    .filter((t) => !allocatedToday().some((a) => a.taskId === t.taskId))
+    .map((t) => ({ t, s: taskScore(t) }))
+    .sort((a, b) => b.s - a.s)
+    .map((x) => x.t)
+    .slice(0, 20);
+  if (!suggestions.length) {
+    suggestions = activeTasks()
+      .map((t) => ({ t, s: taskScore(t) }))
+      .sort((a, b) => b.s - a.s)
+      .map((x) => x.t)
+      .slice(0, 20);
+  } else {
+    suggestions = suggestions
+      .map((t) => ({ t, s: taskScore(t) }))
+      .sort((a, b) => b.s - a.s)
+      .map((x) => x.t);
+  }
+  const suggestPanel = `
+    <div class="panel">
+      <h2 class="panel__title">Suggested tasks</h2>
+      <p class="field-row__hint">Drag to a time slot to add to this day</p>
+      <div class="diary-suggest diary-suggest--scroll">
+        ${suggestions.length ? suggestions.map((t) => {
+          const p = t.patientId ? patientName(t.patientId) : '';
+          const est = t.estimatedMinutes ? ` · ${t.estimatedMinutes}m` : '';
+          const sc = Math.round(taskScore(t));
+          return `<div class="diary-suggest__item" draggable="true" data-drag-type="task" data-task-id="${esc(t.taskId)}" title="Drag to add to diary · Score ${sc}">
+            <div class="diary-suggest__title">${esc(t.title)}</div>
+            <div class="diary-suggest__meta">${p ? esc(p) : 'General'}${est} · ★ ${sc}</div>
+          </div>`;
+        }).join('') : `<div class="field-row__hint">No tasks to suggest</div>`}
+      </div>
+    </div>`;
+
   // This week summary card + target comparison.
   const pct = target ? Math.min(100, Math.round(((wk.clinical / 60) / target) * 100)) : 0;
   const weekPanel = `
@@ -2473,7 +2509,7 @@ function diaryDayHTML(date) {
         </div>` : `<p class="field-row__hint">Set a weekly clinical target in Settings to compare.</p>`}
     </div>`;
 
-  return `<div class="diary-layout">${timeline}<div class="diary-side">${date === todayISO() ? nextUpCard(date) : ''}${dayCard}${weekPanel}</div></div>`;
+  return `<div class="diary-layout">${timeline}<div class="diary-side">${date === todayISO() ? nextUpCard(date) : ''}${dayCard}${suggestPanel}${weekPanel}</div></div>`;
 }
 
 /** Week view: a Mon–Fri time grid, one column per working day. */
@@ -4065,6 +4101,7 @@ document.addEventListener('click', async (e) => {
 
 // Diary drag-to-create: drag across slots to block out a longer event.
 let diaryDrag = null;
+let diaryTaskDrag = null;
 
 document.addEventListener('pointerdown', (e) => {
   const slot = e.target.closest('.diary-slot');
@@ -4072,6 +4109,102 @@ document.addEventListener('pointerdown', (e) => {
   const date = slot.dataset.date || null;
   diaryDrag = { date, start: Number(slot.dataset.minute), end: Number(slot.dataset.minute), moved: false };
   slot.classList.add('diary-slot--active');
+});
+
+document.addEventListener('dragstart', (e) => {
+  const item = e.target.closest('.diary-suggest__item[data-drag-type="task"]');
+  if (!item) return;
+  const view = state.settings.diaryView || 'day';
+  if (view !== 'day') { e.preventDefault(); return; }
+  diaryTaskDrag = { taskId: item.dataset.taskId };
+  e.dataTransfer.effectAllowed = 'copy';
+  try { e.dataTransfer.setData('text/plain', item.dataset.taskId); } catch (_) {}
+});
+
+document.addEventListener('dragover', (e) => {
+  if (!diaryTaskDrag) return;
+  const slot = e.target.closest('.diary-slot');
+  const view = state.settings.diaryView || 'day';
+  if (!slot || view !== 'day') return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  document.querySelectorAll('.diary-slot--hover').forEach((s) => s.classList.remove('diary-slot--hover'));
+  const startMin = Number(slot.dataset.minute) || 0;
+  const task = state.tasks.find((t) => t.taskId === diaryTaskDrag.taskId);
+  const est = task ? (Number(task.estimatedMinutes) || 30) : 30;
+  const steps = Math.max(1, Math.ceil(est / 30));
+  const track = slot.closest('.diary-track');
+  const sel = track ? `.diary-slot[data-date="${slot.dataset.date}"]` : `.diary-slot[data-date="${slot.dataset.date}"]`;
+  for (let i = 0; i < steps; i++) {
+    const m = startMin + i * 30;
+    const s = document.querySelector(`${sel}[data-minute="${m}"]`);
+    if (s) s.classList.add('diary-slot--hover');
+  }
+  const hov = track ? track.querySelector('.diary-hover') : null;
+  if (hov) {
+    hov.hidden = false;
+    const bandStart = Number(track.dataset.bandStart) || 0;
+    const bandEnd = Number(track.dataset.bandEnd) || 1440;
+    hov.style.top = `${((startMin - bandStart) / Math.max(1, bandEnd - bandStart)) * 100}%`;
+    const lbl = hov.querySelector('.diary-hover__label');
+    if (lbl) {
+      lbl.textContent = `${fmtTime(startMin)}–${fmtTime(startMin + est)} (${est}m)`;
+      lbl.hidden = false;
+    }
+  }
+});
+
+document.addEventListener('dragleave', (e) => {
+  const slot = e.target.closest('.diary-slot');
+  if (slot && !slot.contains(e.relatedTarget)) {
+    document.querySelectorAll('.diary-slot--hover').forEach((s) => s.classList.remove('diary-slot--hover'));
+  }
+});
+
+document.addEventListener('drop', async (e) => {
+  if (!diaryTaskDrag) return;
+  const slot = e.target.closest('.diary-slot');
+  const view = state.settings.diaryView || 'day';
+  if (!slot || view !== 'day') { diaryTaskDrag = null; document.querySelectorAll('.diary-slot--hover').forEach((s) => s.classList.remove('diary-slot--hover')); return; }
+  e.preventDefault();
+  document.querySelectorAll('.diary-slot--hover').forEach((s) => s.classList.remove('diary-slot--hover'));
+  const date = slot.dataset.date || state.settings.diaryDate || todayISO();
+  const startMin = Number(slot.dataset.minute) || minutesOf(state.settings.workdayStart);
+  const task = state.tasks.find((t) => t.taskId === diaryTaskDrag.taskId);
+  diaryTaskDrag = null;
+  if (!task) return;
+  const est = Number(task.estimatedMinutes) || 30;
+  const endMin = startMin + Math.max(15, est);
+  // Allocate to today if it's today
+  if (date === todayISO()) {
+    if (!state.todayPlan) state.todayPlan = [];
+    if (!state.todayPlan.some((a) => a.taskId === task.taskId)) {
+      state.todayPlan.push({ taskId: task.taskId, addedAt: new Date().toISOString() });
+    }
+  }
+  // Create diary event
+  const id = 'ev_' + Math.random().toString(36).slice(2, 10);
+  state.diary = state.diary || [];
+  state.diary.push({
+    eventId: id,
+    title: task.title,
+    date,
+    startTime: fmtTime(startMin),
+    endTime: fmtTime(endMin),
+    category: 'clinical',
+    patientId: task.patientId || null,
+    taskId: task.taskId,
+    recurrence: { freq: 'none', interval: 1, weekdays: [], until: null },
+  });
+  task.updatedAt = new Date().toISOString();
+  await save();
+  renderView();
+  toast('Added to diary');
+});
+
+document.addEventListener('dragend', () => {
+  diaryTaskDrag = null;
+  document.querySelectorAll('.diary-slot--hover').forEach((s) => s.classList.remove('diary-slot--hover'));
 });
 
 document.addEventListener('pointerover', (e) => {
