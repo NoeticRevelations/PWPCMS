@@ -2509,7 +2509,7 @@ function diaryDayHTML(date) {
         </div>` : `<p class="field-row__hint">Set a weekly clinical target in Settings to compare.</p>`}
     </div>`;
 
-  return `<div class="diary-layout">${timeline}<div class="diary-side">${date === todayISO() ? nextUpCard(date) : ''}${dayCard}${suggestPanel}${weekPanel}</div></div>`;
+  return `<div class="diary-layout">${timeline}<div class="diary-side">${suggestPanel}${dayCard}${weekPanel}</div></div>`;
 }
 
 /** Week view: a Mon–Fri time grid, one column per working day. */
