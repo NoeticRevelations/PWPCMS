@@ -1397,6 +1397,23 @@ function caseloadBodyHTML(viewId = currentRouteId()) {
     : renderPatientTable(list, cfg, viewId);
 }
 
+/**
+ * Quick "add to Supervision" toggle shown ahead of the patient ID in the
+ * Caseload view only. Patients not yet supervised get CMS status "Awaiting";
+ * supervised ones are removed (CMS status cleared), so the button toggles
+ * membership of the Supervision view either way.
+ */
+function addSupervisionBtn(p, viewId) {
+  if (viewId !== 'caseload') return '';
+  const inSupervision = hasCmsStatus(p);
+  const label = inSupervision
+    ? `Remove from Supervision (CMS status: ${p.cmsStatus})`
+    : 'Add to Supervision (sets CMS status to Awaiting)';
+  return `<button class="btn--icon supervision-add${inSupervision ? ' supervision-add--on' : ''}"
+          data-action="toggle-supervision" data-id="${esc(p.patientId)}"
+          aria-pressed="${inSupervision}" aria-label="${esc(label)}" title="${esc(label)}">${icon('supervision')}</button>`;
+}
+
 /* ---- Table view --------------------------------------------------- */
 function renderPatientTable(list, cfg, viewId = 'caseload') {
   const showCms = viewId === 'supervision';
@@ -1418,7 +1435,7 @@ function renderPatientTable(list, cfg, viewId = 'caseload') {
     const tagged = p.colorTag ? ' caseload-row--tagged' : '';
     const style = p.colorTag ? ` style="--row-accent:${esc(p.colorTag)}"` : '';
     return `<tr class="caseload-row${tagged}"${style}>
-      <td class="mono"><span class="id-wrap">${tagSwatch(p.colorTag)}<span>${esc(p.patientId)}</span></span></td>
+      <td class="mono"><span class="id-wrap">${addSupervisionBtn(p, viewId)}${tagSwatch(p.colorTag)}<span>${esc(p.patientId)}</span></span></td>
       <td><button class="link-btn" data-action="open-drawer" data-id="${esc(p.patientId)}">${esc(p.name)}</button></td>
       <td>${esc(p.pathway || '—')}</td>
       ${showCms ? `<td>${hasCmsStatus(p) ? esc(p.cmsStatus) : '—'}</td>` : ''}
@@ -1481,6 +1498,7 @@ function renderPatientCards(list, viewId = 'caseload') {
         const style = p.colorTag ? ` style="--tag:${esc(p.colorTag)}"` : '';
         return `<article class="patient-card${tagged} ${breach ? 'patient-card--breach' : ''} ${overdue ? 'patient-card--overdue' : ''}"${style}>
           <div class="patient-card__top">
+            ${addSupervisionBtn(p, viewId)}
             ${tagSwatch(p.colorTag)}
             <span class="mono patient-card__id">${esc(p.patientId)}</span>
             <button class="btn--icon" data-action="toggle-rownav" data-id="${esc(p.patientId)}" aria-haspopup="menu"
@@ -3852,6 +3870,22 @@ document.addEventListener('click', async (e) => {
         if (drawerPatientId === p.patientId) refreshDrawerSupervision(p);
         refreshFocusModal(el.dataset.id);
       }
+      break;
+    }
+    case 'toggle-supervision': {
+      const p = state.patients.find((x) => x.patientId === el.dataset.id);
+      if (!p) break;
+      caseloadMenuId = null;
+      const wasIn = !!(p.cmsStatus || '').trim();
+      p.cmsStatus = wasIn ? '' : 'Awaiting';
+      p.updatedAt = new Date().toISOString();
+      toast(wasIn
+        ? `${p.name} removed from Supervision.`
+        : `${p.name} added to Supervision (CMS status: Awaiting).`,
+      wasIn ? 'info' : 'success');
+      await save();
+      if (drawerPatientId === p.patientId) refreshDrawerSupervision(p);
+      refreshFocusModal(el.dataset.id);
       break;
     }
     case 'add-task':

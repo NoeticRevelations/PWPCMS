@@ -713,6 +713,13 @@ button.stat--compact { cursor: pointer; }
 .btn--icon:hover { background: var(--surface-3); color: var(--text); }
 .btn--icon .icon { width: 16px; height: 16px; }
 
+/* Caseload: quick "add to Supervision" toggle sitting ahead of the patient ID */
+.supervision-add { color: var(--text-faint); }
+.supervision-add:hover,
+.supervision-add--on,
+.supervision-add--on:hover { background: var(--accent-tint); color: var(--accent); }
+.supervision-add--on .icon path:first-child { fill: color-mix(in srgb, var(--accent) 30%, transparent); }
+
 /* Generic inline SVG icon (Phase C) */
 .icon { width: 16px; height: 16px; display: block; }
 

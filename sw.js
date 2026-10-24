@@ -3,7 +3,7 @@
  * Minimal offline app-shell cache. Bump CACHE_VERSION to force an update.
  * No user data is ever cached or transmitted; only the static app files.
  * ========================================================================== */
-const CACHE_VERSION = 'caseload-shell-v81';
+const CACHE_VERSION = 'caseload-shell-v83';
 const APP_SHELL = [
   './',
   './index.html',
