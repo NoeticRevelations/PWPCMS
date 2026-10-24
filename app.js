@@ -402,16 +402,12 @@ const ROUTE_ICONS = { today: 'today', tasks: 'tasks', caseload: 'caseload', supe
 function renderNav() {
   const active = currentRouteId();
   const primary = ROUTES.filter((r) => r.id !== 'settings');
-  const settings = ROUTES.find((r) => r.id === 'settings');
   const link = (r, extra = '') => `
     <a class="side-link ${extra}" href="#/${r.id}" title="${r.label}" ${r.id === active ? 'aria-current="page"' : ''}>
       <span class="side-link__icon">${icon(ROUTE_ICONS[r.id] || 'tasks')}</span>
       <span class="side-link__label">${r.label}</span>
     </a>`;
-  $('#nav').innerHTML =
-    primary.map((r) => link(r)).join('') +
-    `<div class="side-group__title" role="presentation">Account</div>` +
-    (settings ? link(settings) : '');
+  $('#nav').innerHTML = primary.map((r) => link(r)).join('');
   renderSmartLists();
 }
 
@@ -419,34 +415,7 @@ function renderNav() {
 function renderSmartLists() {
   const host = $('#side-lists');
   if (!host) return;
-  const onTasks = currentRouteId() === 'tasks';
-  const filter = state.settings.tasksView.filter;
-  const breachOn = !!state.settings.caseloadView.breachOnly;
-  const breachCount = state.patients.filter(
-    (p) => daysInStageOf(p) >= (Number(state.settings.waitWarningDays) || 42)
-  ).length;
-  const lists = [
-    { key: 'overdue', label: 'Overdue', count: countOverdue(), icon: 'overdue' },
-    { key: 'today', label: 'Due today', count: countDueToday(), icon: 'clock' },
-    { key: 'quick', label: 'Quick wins', count: quickWins().length, icon: 'quick' },
-  ];
-  host.innerHTML = `
-    <div class="side-group__title" role="presentation">Smart lists</div>
-    ${lists.map((l) => `
-      <button class="side-link ${onTasks && filter === l.key ? 'side-link--on' : ''}"
-              data-action="smart-list" data-filter="${l.key}" title="${l.label}"
-              ${onTasks && filter === l.key ? 'aria-current="page"' : ''}>
-        <span class="side-link__icon">${icon(l.icon)}</span>
-        <span class="side-link__label">${l.label}</span>
-        ${l.count ? `<span class="side-link__count">${l.count}</span>` : ''}
-      </button>`).join('')}
-    <button class="side-link ${currentRouteId() === 'caseload' && breachOn ? 'side-link--on' : ''}"
-            data-action="goto-caseload-breach" title="Long waits"
-            ${currentRouteId() === 'caseload' && breachOn ? 'aria-current="page"' : ''}>
-      <span class="side-link__icon">${icon('caseload')}</span>
-      <span class="side-link__label">Long waits</span>
-      ${breachCount ? `<span class="side-link__count">${breachCount}</span>` : ''}
-    </button>`;
+  host.innerHTML = '';
 }
 
 /** Close the off-canvas sidebar (mobile) and reset the toggle state. */
@@ -474,6 +443,15 @@ function renderView() {
   const scroller = view.querySelector('.caseload-table-scroll');
   if (scroller && prevScroll) scroller.scrollTop = prevScroll;
   renderNav();
+  updateThemeToggle();
+  // Ensure topnav classes match current nav structure
+  const topnav = $('.topnav');
+  if (topnav) {
+    const nav = $('#nav');
+    const lists = $('#side-lists');
+    if (nav && !nav.classList.contains('topnav__nav')) nav.classList.add('topnav__nav');
+    if (lists && !lists.classList.contains('topnav__lists')) lists.classList.add('topnav__lists');
+  }
   // An open caseload menu lives inside a scrolling/clipping container, so move
   // it to the viewport layer where it can't be cut off.
   if (caseloadMenuId) placeCaseloadMenu();
@@ -3133,7 +3111,7 @@ function buildPalette() {
     <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
       <input class="palette__input" id="palette-input" type="text" role="combobox"
              aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"
-             placeholder="Jump to…  or type to add a task" autocomplete="off" />
+             placeholder="Search patients or tasks…" autocomplete="off" />
       <ul class="palette__list" id="palette-list" role="listbox" aria-label="Commands"></ul>
       <div class="palette__hint"><kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> move ·
         <kbd class="kbd">Enter</kbd> run · <kbd class="kbd">Esc</kbd> close</div>
@@ -3165,14 +3143,18 @@ function paletteMatches(query) {
   if (!q) return items;
   const patients = state.patients
     .filter((p) => (p.name || '').toLowerCase().includes(q) || String(p.patientId).toLowerCase().includes(q))
-    .slice(0, 5)
+    .slice(0, 8)
     .map((p) => ({ label: p.name, sub: 'Patient · ' + p.patientId, kind: 'patient', value: p.patientId, icon: 'caseload' }));
   const tasks = activeByScore()
     .filter((t) => (t.title || '').toLowerCase().includes(q))
-    .slice(0, 5)
+    .slice(0, 8)
     .map((t) => ({ label: t.title, sub: 'Task' + (t.patientId ? ' · ' + patientName(t.patientId) : ''), kind: 'task', value: t.taskId, icon: 'tasks' }));
+  const completedTasks = state.tasks
+    .filter((t) => t.isCompleted && (t.title || '').toLowerCase().includes(q))
+    .slice(0, 6)
+    .map((t) => ({ label: t.title, sub: 'Task (done)' + (t.patientId ? ' · ' + patientName(t.patientId) : ''), kind: 'task', value: t.taskId, icon: 'tasks' }));
   const add = { label: `Add task “${query.trim()}”`, kind: 'add-task', value: query.trim(), icon: 'plus' };
-  return [...items, ...patients, ...tasks, add];
+  return [...items, ...patients, ...tasks, ...completedTasks, add];
 }
 
 function renderPalette() {
@@ -3763,8 +3745,7 @@ document.addEventListener('click', async (e) => {
       closeSidebar();
       break;
     case 'toggle-sidebar-collapse':
-      state.settings.sidebarCollapsed = !state.settings.sidebarCollapsed;
-      await save();
+      // Collapse behaviour removed
       break;
     case 'open-focus':
       openFocusModal(el.dataset.focus);
@@ -3817,6 +3798,10 @@ document.addEventListener('click', async (e) => {
     case 'goto-caseload':
       closeSidebar();
       location.hash = '#/caseload';
+      break;
+    case 'goto-settings':
+      closeSidebar();
+      location.hash = '#/settings';
       break;
     case 'clear-breach':
       caseloadConfig().breachOnly = false;
@@ -4208,10 +4193,27 @@ document.addEventListener('change', async (e) => {
 });
 
 // Theme <select> in the header
-$('#theme-select').addEventListener('change', async (e) => {
-  state.settings.theme = e.target.value;
-  await save();
-});
+const themeToggle = $('#theme-toggle');
+if (themeToggle) {
+  themeToggle.addEventListener('click', async () => {
+    const current = state.settings.theme || 'light';
+    state.settings.theme = current === 'dark' ? 'light' : 'dark';
+    await save();
+    updateThemeToggle();
+  });
+}
+
+function updateThemeToggle() {
+  const btn = $('#theme-toggle');
+  if (!btn) return;
+  const t = state.settings.theme || 'light';
+  btn.setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+  btn.setAttribute('title', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+  const icon = btn.querySelector('.theme-toggle__icon');
+  const label = btn.querySelector('.theme-toggle__label');
+  if (icon) icon.textContent = t === 'dark' ? '☾' : '☼';
+  if (label) label.textContent = t === 'dark' ? 'Dark' : 'Light';
+}
 
 // Inline quick-add (Tasks view): submit via Enter or the Add button.
 document.addEventListener('submit', (e) => {
@@ -4291,8 +4293,7 @@ function confirmReset() {
 function applyTheme() {
   const theme = state.settings.theme || 'light';
   document.documentElement.setAttribute('data-theme', theme);
-  const sel = $('#theme-select');
-  if (sel && sel.value !== theme) sel.value = theme;
+  updateThemeToggle();
 }
 
 /** Diary timeline zoom levels. 1 = fill the screen; higher = taller grid. */
@@ -4313,19 +4314,10 @@ function applyDensity() {
   root.style.setProperty('--diary-zoom', String(diaryZoomLevel()));
 }
 
-/** Desktop: collapse the sidebar to an icon rail (persisted). Mobile is unaffected. */
+/** Collapse/expand the top navigation (persisted). */
 function applyLayout() {
-  const collapsed = !!state.settings.sidebarCollapsed;
   const app = $('#app');
-  if (app) app.classList.toggle('sidebar--collapsed', collapsed);
-  const btn = $('.sidebar__toggle');
-  if (btn) {
-    btn.setAttribute('aria-expanded', String(!collapsed));
-    btn.setAttribute('aria-label', collapsed ? 'Expand navigation' : 'Collapse navigation');
-    btn.setAttribute('title', collapsed ? 'Expand navigation' : 'Collapse navigation');
-    const ic = $('.sidebar__toggle-icon');
-    if (ic) ic.textContent = collapsed ? '›' : '‹';
-  }
+  if (app) app.classList.remove('sidebar--collapsed');
 }
 
 function refreshStoragePill() {
@@ -4383,6 +4375,9 @@ function registerServiceWorker() {
   if (autoPlanDueToday() || seededWaitAnchors) await Storage.save(state);
   if (!location.hash) location.hash = '#/today';
   render();
+  updateThemeToggle();
+  const navSearch = document.getElementById('nav-search-btn');
+  if (navSearch) navSearch.addEventListener('click', (e) => { e.preventDefault(); openPalette(); });
   registerServiceWorker();
   watchConnectivity();
   setInterval(tickDiaryClocks, 30000);

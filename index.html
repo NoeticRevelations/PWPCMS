@@ -26,38 +26,35 @@
 
   <div id="app" class="app">
     <!-- Sidebar primary navigation: routes, smart lists and global controls -->
-    <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
-      <div class="sidebar__head">
-        <a class="sidebar__brand" href="#/today" aria-label="Caseload home" title="Caseload">
-          <span class="brand__mark" aria-hidden="true">◧</span>
-          <span class="brand__name">Caseload</span>
-        </a>
-        <button class="sidebar__toggle" type="button" data-action="toggle-sidebar-collapse"
-                aria-label="Collapse navigation" aria-expanded="true" aria-controls="sidebar"
-                title="Collapse navigation">
-          <span class="sidebar__toggle-icon" aria-hidden="true">‹</span>
-        </button>
-      </div>
+    <header class="sidebar" id="sidebar" aria-label="Primary navigation">
+      <div class="sidebar__row">
+        <div class="sidebar__head">
+          <a class="sidebar__brand" href="#/today" aria-label="Caseload home" title="Caseload">
+            <span class="brand__mark" aria-hidden="true">◧</span>
+            <span class="brand__name">Caseload</span>
+          </a>
+        </div>
 
-      <nav class="side-nav" id="nav" aria-label="Main views"></nav>
+        <nav class="side-nav" id="nav" aria-label="Main views"></nav>
 
-      <div id="side-lists"></div>
+        <div id="side-lists"></div>
 
-      <div class="sidebar__foot">
-        <label class="side-field">
-          <span class="visually-hidden">Theme</span>
-          <select id="theme-select">
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-            <option value="contrast">High contrast</option>
-          </select>
-        </label>
-        <div class="side-pills">
-          <span class="pill" id="pwa-pill" title="This app keeps working offline once loaded" hidden>● Offline ready</span>
-          <span class="pill" id="storage-pill" title="Where your data is stored">Storage: …</span>
+        <div class="sidebar__spacer"></div>
+
+        <div class="sidebar__foot">
+          <button class="icon-btn" id="nav-search-btn" type="button" aria-label="Search" title="Search (Ctrl+K)">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+          <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">
+            <span class="theme-toggle__icon" aria-hidden="true">☼</span>
+            <span class="theme-toggle__label">Theme</span>
+          </button>
+          <button class="icon-btn" data-action="goto-settings" aria-label="Settings" title="Settings">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg>
+          </button>
         </div>
       </div>
-    </aside>
+    </header>
 
     <div class="sidebar-backdrop" id="sidebar-backdrop" data-action="close-sidebar" hidden></div>
 
