@@ -160,6 +160,16 @@ const ICON_PATHS = {
   pin: '<path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3H7l3-3-1-6Z"/>',
   dots: '<circle cx="12" cy="5" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.7" fill="currentColor" stroke="none"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
+  sparkle: '<path d="M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2Z"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.5-4-1-5 4 1 6 3 8 7 1.5 3 1 6-1.5 8.5S11 21 10 21c-.5 0-2.5-.5-4-2S3 15 3 15c1.5-1 4-1.5 5.5-.5Z"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/>',
+  repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/>',
+  paperclip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  'check-circle': '<circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/>',
+  hourglass: '<path d="M12 12 6.5 6.25A2.1 2.1 0 0 1 9.5 3.4L12 6l2.5-2.6a2.1 2.1 0 0 1 3 2.85Z"/><path d="M12 12l-5.5 5.75a2.1 2.1 0 0 0 3 2.85L12 18l2.5 2.6a2.1 2.1 0 0 0 3-2.85Z"/>',
 };
 
 /** Render an inline SVG icon by name. */
@@ -385,7 +395,7 @@ function render() {
 const ROUTES = [
   { id: 'today',    label: 'Today',    render: renderToday },
   { id: 'tasks',    label: 'Tasks',    render: renderTasks },
-  { id: 'caseload', label: 'Caseload', render: renderCaseload },
+  { id: 'caseload', label: 'Patients', render: renderCaseload },
   { id: 'supervision', label: 'Supervision', render: renderSupervision },
   { id: 'diary',    label: 'Diary',    render: renderDiary },
   { id: 'settings', label: 'Settings', render: renderSettings },
@@ -439,6 +449,7 @@ function renderView() {
   // Caseload-style views fill the screen so a long list scrolls in place, not the page.
   const caseView = route.id === 'caseload' || route.id === 'supervision';
   view.classList.toggle('view--caseload', caseView);
+  view.classList.toggle('view--tasks', route.id === 'tasks');
   view.classList.toggle('view--caseload-table', caseView && caseloadConfig(route.id).mode === 'table');
   const scroller = view.querySelector('.caseload-table-scroll');
   if (scroller && prevScroll) scroller.scrollTop = prevScroll;
@@ -727,7 +738,7 @@ function focusTaskRow(t, kind) {
       <button class="btn btn--sm ${planned ? '' : 'btn--primary'}"
               data-action="focus-toggle-plan" data-id="${esc(t.taskId)}" data-focus="${esc(kind)}"
               aria-pressed="${planned}" aria-label="${label}" title="${label}">
-        ${planned ? '✓ In plan' : '＋ Add'}
+        ${planned ? `${icon('check', 'icon icon--sm')} In plan` : '＋ Add'}
       </button>
     </div>
   </li>`;
@@ -753,7 +764,7 @@ function patientSupervisionRow(p) {
       <button class="btn btn--sm ${awaiting ? '' : 'btn--primary'}"
               data-action="send-supervision" data-id="${esc(p.patientId)}"
               aria-pressed="${awaiting}" aria-label="${label}" title="${label}">
-        ${awaiting ? '✓ Awaiting' : '＋ Supervision'}
+        ${awaiting ? `${icon('check', 'icon icon--sm')} Awaiting` : '＋ Supervision'}
       </button>
       <button class="btn--icon" data-action="open-drawer" data-id="${esc(p.patientId)}"
               aria-label="Open details" title="Open details">${icon('caseload')}</button>
@@ -772,10 +783,10 @@ let focusModalKind = null;
 function openFocusModal(kind, focusTaskId) {
   if (kind === 'longwait') { openLongWaitModal(focusTaskId); return; }
   const cfg = kind === 'quick'
-    ? { label: 'Quick wins', emoji: '⚡' }
+    ? { label: 'Quick wins', icon: 'quick' }
     : kind === 'today'
-      ? { label: 'Due today', emoji: '📅' }
-      : { label: 'Overdue', emoji: '⏰' };
+      ? { label: 'Due today', icon: 'today' }
+      : { label: 'Overdue', icon: 'clock' };
   const list = focusTasks(kind);
   const unplanned = list.filter((t) => !plannedToday(t));
   const count = list.length;
@@ -790,9 +801,9 @@ function openFocusModal(kind, focusTaskId) {
     </div>` : ''}
     ${count
       ? `<ul class="task-list">${list.map((t) => focusTaskRow(t, kind)).join('')}</ul>`
-      : `<p class="field-row__hint">Nothing ${emptyText} right now. 🎉</p>`}`;
+      : `<p class="field-row__hint">Nothing ${emptyText} right now.</p>`}`;
   openModal({
-    title: `${cfg.emoji} ${cfg.label} — ${count} task${count === 1 ? '' : 's'}`,
+    title: `${cfg.label} — ${count} task${count === 1 ? '' : 's'}`,
     body,
     actions: [{ label: 'Done', variant: 'primary', onClick: closeModal }],
   });
@@ -813,9 +824,9 @@ function openLongWaitModal(focusPatientId) {
       Send the ones you want to review to Supervision (sets their CMS status to “Awaiting”).</p>
     ${list.length
       ? `<ul class="task-list">${list.map(patientSupervisionRow).join('')}</ul>`
-      : '<p class="field-row__hint">No patients past the wait warning. 🎉</p>'}`;
+      : '<p class="field-row__hint">No patients past the wait warning.</p>'}`;
   openModal({
-    title: `⏳ Long waits — ${list.length} patient${list.length === 1 ? '' : 's'}`,
+    title: `Long waits — ${list.length} patient${list.length === 1 ? '' : 's'}`,
     body,
     actions: [{ label: 'Done', variant: 'primary', onClick: closeModal }],
   });
@@ -911,12 +922,12 @@ function renderToday() {
 
   if (!state.patients.length && !state.tasks.length) {
     return head + quickAdd + emptyState({
-      icon: '📥',
+      icon: icon('inbox'),
       title: 'Nothing loaded yet',
       text: 'Import your IAPTUS caseload CSV or load demo data to explore the layout.',
       actions: `
-        <button class="btn" data-action="load-demo">Load demo data</button>
-        <button class="btn btn--primary" data-action="open-import">Import CSV</button>`,
+        <button class="btn btn--primary" data-action="load-demo">Load demo data</button>
+        <button class="btn" data-action="open-import">Import CSV</button>`,
     });
   }
 
@@ -964,18 +975,18 @@ function renderToday() {
     { id: 'plan', collapsed: isCardCollapsed('plan') }));
 
   if (dueUnplanned.length) {
-    sections.push(sectionPanel('📅 Due today', 'accent',
+    sections.push(sectionPanel('Due today', 'accent',
       `<ul class="task-list">${dueUnplanned.map((t) => taskItem(t, { allocated: plannedToday(t) })).join('')}</ul>`,
       { id: 'due', collapsed: isCardCollapsed('due') }));
   }
   if (urgent.length) {
-    sections.push(sectionPanel('🔥 Urgent — long waits / high priority', 'warning',
+    sections.push(sectionPanel('Urgent — long waits / high priority', 'warning',
       `<ul class="task-list">${urgent.map((t) => taskItem(t, { allocated: plannedToday(t) })).join('')}</ul>`,
       { id: 'urgent', collapsed: isCardCollapsed('urgent') }));
   }
 
   if (suggestions.length) {
-    sections.push(sectionPanel('✨ Suggested for today', 'accent', `
+    sections.push(sectionPanel('Suggested for today', 'accent', `
       <div class="btn-row" style="margin-bottom:var(--space-3)">
         <button class="btn" data-action="accept-suggestions">Add all suggestions</button>
       </div>
@@ -984,7 +995,7 @@ function renderToday() {
   }
 
   const nothing = !overdue.length && !dueToday.length && !urgent.length && !quick.length && !plan.length;
-  const empty = nothing ? '<div class="panel"><p class="field-row__hint">No tasks need attention right now. 🎉</p></div>' : '';
+  const empty = nothing ? '<div class="panel"><p class="field-row__hint">No tasks need attention right now.</p></div>' : '';
 
   // A Gantt-style bar of the day's diary bookings, above the plan.
   const timeline = todayTimelineHTML(todayIso);
@@ -1028,10 +1039,10 @@ function groupTasksForTable(list) {
   if (groupBy === 'due') {
     const today = todayISO();
     return [
-      { label: '⏰ Overdue', tasks: list.filter((t) => t.dueDate && t.dueDate < today) },
-      { label: '📅 Due today', tasks: list.filter((t) => t.dueDate === today) },
-      { label: '🗓 Upcoming', tasks: list.filter((t) => t.dueDate && t.dueDate > today) },
-      { label: '📭 No due date', tasks: list.filter((t) => !t.dueDate) },
+      { label: 'Overdue', tasks: list.filter((t) => t.dueDate && t.dueDate < today) },
+      { label: 'Due today', tasks: list.filter((t) => t.dueDate === today) },
+      { label: 'Upcoming', tasks: list.filter((t) => t.dueDate && t.dueDate > today) },
+      { label: 'No due date', tasks: list.filter((t) => !t.dueDate) },
     ].filter((g) => g.tasks.length);
   }
   // Group by patient — alphabetical, with general (no-patient) tasks last.
@@ -1054,7 +1065,7 @@ function groupRowHTML(g) {
   if (g.patient) {
     const days = daysInStageOf(g.patient);
     const breach = days >= (state.settings.waitWarningDays || 42);
-    sub = `<span class="group-sub">${esc(g.patient.pathway || 'No pathway')} · ${days} day${days === 1 ? '' : 's'}${breach ? ' · ⚠ breach' : ''}</span>`;
+    sub = `<span class="group-sub">${esc(g.patient.pathway || 'No pathway')} · ${days} day${days === 1 ? '' : 's'}${breach ? ` · ${icon('overdue', 'icon icon--sm')} breach` : ''}</span>`;
   }
   return `<tr class="group-row"><td colspan="9">
     <span class="group-name">${esc(g.label)}</span>${sub}<span class="group-count">${g.tasks.length}</span>
@@ -1078,7 +1089,7 @@ function taskTableRow(t) {
     </td>
     <td class="col-task"><button type="button" class="task-line__title task-line__title--btn" data-action="edit-task"
               data-id="${esc(t.taskId)}" title="Edit task">${esc(t.title)}</button>${
-      allocated ? ' <span class="task-line__pin" title="On today’s plan">📌</span>' : ''}</td>
+      allocated ? ` <span class="task-line__pin" title="On today’s plan">${icon('pin', 'icon icon--sm')}</span>` : ''}</td>
     <td class="col-patient">${p
       ? `<button class="link-btn" data-action="open-drawer" data-id="${esc(p.patientId)}">${esc(p.name)}</button>`
       : '<span class="muted">General</span>'}</td>
@@ -1126,7 +1137,7 @@ function renderTasks() {
 
   if (!state.tasks.length) {
     return head + quickAdd + emptyState({
-      icon: '✅',
+      icon: icon('check-circle'),
       title: 'No tasks yet',
       text: 'Type in the bar above to add a task, or open a patient from the Caseload to attach one to them.',
     });
@@ -1163,10 +1174,11 @@ function renderTasks() {
         const headRow = cfg.groupBy === 'none' ? '' : groupRowHTML(g);
         return headRow + sortTaskList(g.tasks).map(taskTableRow).join('');
       }).join('')
-    : `<tr><td class="table-empty" colspan="9">Nothing matches this filter. 🎉</td></tr>`;
+    : `<tr><td class="table-empty" colspan="9">Nothing matches this filter.</td></tr>`;
 
   const table = `
     <div class="panel table-wrap">
+      <div class="task-table-scroll">
       <table class="data-table task-table">
         <thead>
           <tr>
@@ -1183,6 +1195,7 @@ function renderTasks() {
         </thead>
         <tbody>${tbody}</tbody>
       </table>
+      </div>
     </div>`;
 
   const completed = state.tasks.filter((t) => t.isCompleted).length;
@@ -1204,6 +1217,7 @@ const CASELOAD_PALETTE = [
   ['#b4690e', 'Amber — caution'],
   ['#2f7d32', 'Green — on track'],
   ['#2a5db0', 'Blue — clinical focus'],
+  // taste-skill-ignore: user-chosen patient tag colour, not a UI accent.
   ['#7c3aed', 'Purple — review soon'],
 ];
 
@@ -1218,13 +1232,25 @@ function paletteTitle(colorTag) {
   const hit = CASELOAD_PALETTE.find(([c]) => c && c.toLowerCase() === String(colorTag || '').toLowerCase());
   return hit ? hit[1] : 'Custom colour';
 }
-/** Colour patient swatch. Empty string when untagged. */
-function tagSwatch(colorTag) {
-  if (!colorTag) return '';
-  return `<span class="tag" style="--tag:${esc(colorTag)}" title="${esc(paletteTitle(colorTag))}" aria-hidden="true"></span>`;
+/** Colour patient swatch. Returns '' when untagged non-interactive; with a
+ *  patient id it becomes the click-to-change-colour control that opens the
+ *  colour popover right next to the ID (no detour via the ⋮ menu). */
+function tagSwatch(colorTag, byId) {
+  const interactive = !!byId;
+  if (!colorTag && !interactive) return '';
+  const cls = colorTag ? 'tag' : 'tag tag--empty';
+  const hue = colorTag ? ` style="--tag:${esc(colorTag)}"` : '';
+  if (!interactive) {
+    return `<span class="${cls}"${hue} title="${esc(paletteTitle(colorTag))}" aria-hidden="true"></span>`;
+  }
+  const open = caseloadMenuKind === 'color' && caseloadMenuId === byId;
+  const title = colorTag ? `${esc(paletteTitle(colorTag))} — click to change colour` : 'Set colour';
+  return `<button type="button" class="${cls}"${hue} title="${title}" data-action="toggle-colormenu"
+      data-id="${esc(byId)}" aria-haspopup="menu" aria-expanded="${open}"></button>`;
 }
 
 let caseloadMenuId = null;   // patient whose row/card menu is open
+let caseloadMenuKind = 'row'; // 'row' = full actions menu, 'color' = colour popover
 let drawerPatientId = null;  // patient whose drawer is open
 let expandedPatients = new Set();  // caseload patients whose task list is expanded (all collapsed by default)
 
@@ -1289,26 +1315,28 @@ function caseloadViewHTML(viewId) {
   const cfg = caseloadConfig(viewId);
   const isSupervision = viewId === 'supervision';
   const head = `
-    <header class="view__head">
-      <h1 class="view__title">${isSupervision ? 'Supervision' : 'Caseload'}</h1>
-      <p class="view__subtitle">${isSupervision
-        ? 'Only patients carrying a CMS status — every caseload control works here too.'
-        : 'Sort, group and colour-code your caseload, and send patients to Supervision.'}</p>
-      ${isSupervision ? '' : `<div class="btn-row" style="margin-top:var(--space-3)">
-        <button class="btn btn--primary" data-action="open-import">Import CSV</button>
+    <header class="view__head${isSupervision ? '' : ' view__head--split'}">
+      <div>
+        <h1 class="view__title">${isSupervision ? 'Supervision' : 'Patients'}</h1>
+        <p class="view__subtitle">${isSupervision
+          ? 'Only patients carrying a CMS status — every caseload control works here too.'
+          : 'Sort, group and colour-code your caseload, and send patients to Supervision.'}</p>
+      </div>
+      ${isSupervision ? '' : `<div class="view__actions">
+        <button class="btn" data-action="open-import">Import CSV</button>
         <button class="btn" data-action="new-patient">＋ Add patient</button>
       </div>`}
     </header>`;
 
   if (!state.patients.length) {
     return head + emptyState({
-      icon: '🧑‍⚕️',
+      icon: icon('caseload'),
       title: 'No patients yet',
       text: 'Import your IAPTUS caseload CSV, add someone manually, or load demo data to preview the views.',
       actions: `
-        <button class="btn" data-action="load-demo">Load demo data</button>
+        <button class="btn btn--primary" data-action="load-demo">Load demo data</button>
         <button class="btn" data-action="new-patient">＋ Add patient</button>
-        <button class="btn btn--primary" data-action="open-import">Import CSV</button>`,
+        <button class="btn" data-action="open-import">Import CSV</button>`,
     });
   }
 
@@ -1316,10 +1344,10 @@ function caseloadViewHTML(viewId) {
 
   if (isSupervision && !pool.length) {
     return head + emptyState({
-      icon: '🛡️',
+      icon: icon('supervision'),
       title: 'Nobody in supervision yet',
-      text: 'Add a CMS status on a patient (in Caseload → open a patient → Details), or map a CMS column when importing a CSV. Patients with a CMS status show up here.',
-      actions: `<button class="btn" data-action="goto-caseload">Go to Caseload</button>`,
+      text: 'Add a CMS status on a patient (in Patients → open a patient → Details), or map a CMS column when importing a CSV. Patients with a CMS status show up here.',
+      actions: `<button class="btn" data-action="goto-caseload">Go to Patients</button>`,
     });
   }
 
@@ -1400,15 +1428,15 @@ function renderPatientTable(list, cfg, viewId = 'caseload') {
   const rowHTML = (p) => {
     const breach = daysInStageOf(p) >= (state.settings.waitWarningDays || 42);
     const menuOpen = caseloadMenuId === p.patientId;
-    const menu = menuOpen ? rowMenuHTML(p) : '';
+    const menu = menuOpen ? (caseloadMenuKind === 'color' ? swatchMenuHTML(p) : rowMenuHTML(p)) : '';
     const tagged = p.colorTag ? ' caseload-row--tagged' : '';
     const style = p.colorTag ? ` style="--row-accent:${esc(p.colorTag)}"` : '';
     return `<tr class="caseload-row${tagged}"${style}>
-      <td class="mono"><span class="id-wrap">${addSupervisionBtn(p, viewId)}${tagSwatch(p.colorTag)}<span>${esc(p.patientId)}</span></span></td>
+      <td class="mono"><span class="id-wrap">${addSupervisionBtn(p, viewId)}${tagSwatch(p.colorTag, p.patientId)}<span>${esc(p.patientId)}</span></span></td>
       <td><button class="link-btn" data-action="open-drawer" data-id="${esc(p.patientId)}">${esc(p.name)}</button></td>
       <td>${esc(p.pathway || '—')}</td>
       ${showCms ? `<td>${hasCmsStatus(p) ? esc(p.cmsStatus) : '—'}</td>` : ''}
-      <td class="${breach ? 'wait-badge wait-badge--danger' : ''}">${esc(daysInStageOf(p))}${breach ? ' ⚠' : ''}</td>
+      <td class="${breach ? 'wait-badge wait-badge--danger' : ''}">${esc(daysInStageOf(p))}${breach ? ` ${icon('overdue', 'icon icon--sm')}` : ''}</td>
       <td class="row-tasks">${patientTasksHTML(p)}</td>
       <td class="num">${patientScore(p.patientId) ? Math.round(patientScore(p.patientId)) : '—'}</td>
       <td class="row-actions">
@@ -1468,7 +1496,7 @@ function renderPatientCards(list, viewId = 'caseload') {
         return `<article class="patient-card${tagged} ${breach ? 'patient-card--breach' : ''} ${overdue ? 'patient-card--overdue' : ''}"${style}>
           <div class="patient-card__top">
             ${addSupervisionBtn(p, viewId)}
-            ${tagSwatch(p.colorTag)}
+            ${tagSwatch(p.colorTag, p.patientId)}
             <span class="mono patient-card__id">${esc(p.patientId)}</span>
             <button class="btn--icon" data-action="toggle-rownav" data-id="${esc(p.patientId)}" aria-haspopup="menu"
                     aria-expanded="${menuOpen}" aria-label="Actions for ${esc(p.name)}">${icon('dots')}</button>
@@ -1476,36 +1504,51 @@ function renderPatientCards(list, viewId = 'caseload') {
           <button class="patient-card__name" data-action="open-drawer" data-id="${esc(p.patientId)}">${esc(p.name)}</button>
           <div class="patient-card__chips">
             <span class="chip">${esc(p.pathway || 'No pathway')}</span>
-            ${hasCmsStatus(p) ? `<span class="chip" title="CMS status">🛡 ${esc(p.cmsStatus)}</span>` : ''}
+            ${hasCmsStatus(p) ? `<span class="chip" title="CMS status">${icon('supervision', 'icon icon--sm')} ${esc(p.cmsStatus)}</span>` : ''}
             <span class="chip ${breach ? 'chip--danger' : ''}">⏱ ${days} days</span>
             ${patientScore(p.patientId) ? `<span class="chip" title="ADHD priority score">▲ ${Math.round(patientScore(p.patientId))}</span>` : ''}
-            ${overdue ? '<span class="chip chip--danger">⚠ overdue</span>' : ''}
+            ${overdue ? `<span class="chip chip--danger">${icon('overdue', 'icon icon--sm')} overdue</span>` : ''}
           </div>
           ${patientTasksHTML(p)}
-          ${menuOpen ? rowMenuHTML(p) : ''}
+          ${menuOpen ? (caseloadMenuKind === 'color' ? swatchMenuHTML(p) : rowMenuHTML(p)) : ''}
         </article>`;
       }).join('')}
     </div>`;
 }
 
 /* ---- Row / card context menu -------------------------------------- */
-function rowMenuHTML(p) {
+/** The colour picker row shared by the actions menu and the popover. */
+function swatchPickerHTML(p) {
   const swatches = CASELOAD_PALETTE.map(([c, title]) =>
     `<button class="swatch ${(p.colorTag || '') === c ? 'swatch--on' : ''}" data-action="set-color"
              data-id="${esc(p.patientId)}" data-color="${c}" title="${esc(title)}"
              aria-label="${esc(title)}" style="background:${c || 'var(--surface-3)'}"></button>`).join('');
   return `
-    <div class="row-menu" data-menu>
+    <div class="swatches">${swatches}
+      <label class="swatch swatch--custom" title="Custom colour">
+        <input type="color" data-action="color-custom" data-id="${esc(p.patientId)}"
+               value="${esc(p.colorTag || '#0f766e')}" aria-label="Custom colour" />
+      </label>
+    </div>`;
+}
+
+/** Colour-only popover: what the ID-circle click opens. */
+function swatchMenuHTML(p) {
+  return `
+    <div class="row-menu row-menu--colour" data-menu data-anchored="${esc(p.patientId)}">
       <div class="row-menu__label">Colour</div>
-      <div class="swatches">${swatches}
-        <label class="swatch swatch--custom" title="Custom colour">
-          <input type="color" data-action="color-custom" data-id="${esc(p.patientId)}"
-                 value="${esc(p.colorTag || '#0f766e')}" aria-label="Custom colour" />
-        </label>
-      </div>
+      ${swatchPickerHTML(p)}
+    </div>`;
+}
+
+function rowMenuHTML(p) {
+  return `
+    <div class="row-menu" data-menu data-anchored="${esc(p.patientId)}">
+      <div class="row-menu__label">Colour</div>
+      ${swatchPickerHTML(p)}
       <div class="row-menu__label">Actions</div>
       <button class="row-menu__item" data-action="send-supervision" data-id="${esc(p.patientId)}">
-        ${(p.cmsStatus || '') === 'Awaiting' ? '✓ Awaiting supervision' : 'Send to supervision'}
+        ${(p.cmsStatus || '') === 'Awaiting' ? `${icon('check', 'icon icon--sm')} Awaiting supervision` : 'Send to supervision'}
       </button>
       <button class="row-menu__item" data-action="add-task" data-id="${esc(p.patientId)}">＋ Add task</button>
       <button class="row-menu__item" data-action="open-drawer" data-id="${esc(p.patientId)}">Open details</button>
@@ -1514,19 +1557,29 @@ function rowMenuHTML(p) {
     </div>`;
 }
 
+/** The control the open menu is anchored to (⋮ for actions, ID-circle for colour). */
+function caseloadMenuAnchor() {
+  if (!caseloadMenuId) return null;
+  const action = caseloadMenuKind === 'color' ? 'toggle-colormenu' : 'toggle-rownav';
+  return document.querySelector(`[data-action="${action}"][data-id="${CSS.escape(caseloadMenuId)}"]`);
+}
+
 /** Re-anchor an open row/card menu to the viewport so the scroll containers
  *  around it (the table pane, the caseload body) can't clip it, and clamp it
  *  so it stays on screen. */
 function placeCaseloadMenu() {
   const menu = document.querySelector('.row-menu');
   if (!menu) return;
-  const anchor = menu.parentElement && menu.parentElement.querySelector('[data-action="toggle-rownav"]');
+  const anchor = caseloadMenuAnchor();
   if (!anchor) return;
   const gap = 4, pad = 8;
   const a = anchor.getBoundingClientRect();
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
   const maxLeft = Math.max(pad, window.innerWidth - mw - pad);
-  const left = Math.min(Math.max(pad, a.right - mw), maxLeft);
+  // The actions menu right-aligns to the ⋮; the colour popover drops from the
+  // ID circle's own left edge.
+  const left0 = caseloadMenuKind === 'color' ? a.left : a.right - mw;
+  const left = Math.min(Math.max(pad, left0), maxLeft);
   let top = a.bottom + gap;
   if (top + mh > window.innerHeight - pad) top = a.top - gap - mh;   // flip above when it won't fit below
   top = Math.min(Math.max(pad, top), Math.max(pad, window.innerHeight - mh - pad));
@@ -1550,7 +1603,7 @@ function closeCaseloadMenu() {
  *  belongs to has scrolled out of the pane. */
 function refreshCaseloadMenu() {
   const menu = document.querySelector('.row-menu');
-  const anchor = menu && menu.parentElement && menu.parentElement.querySelector('[data-action="toggle-rownav"]');
+  const anchor = caseloadMenuAnchor();
   if (!menu || !anchor) return;
   const a = anchor.getBoundingClientRect();
   const pane = menu.closest('.caseload-table-scroll');
@@ -1601,7 +1654,7 @@ function drawerTasksHTML(p, { editable = false } = {}) {
         return `
         <li class="task-row ${t.isCompleted ? 'task-row--done' : ''}">
           <button class="task-row__check" data-action="toggle-task" data-id="${esc(t.taskId)}"
-                  aria-label="Mark ${t.isCompleted ? 'incomplete' : 'complete'}">${t.isCompleted ? '✓' : ''}</button>
+                  aria-label="Mark ${t.isCompleted ? 'incomplete' : 'complete'}">${t.isCompleted ? icon('check') : ''}</button>
           ${title}
           <span class="task-row__meta">${esc(dueLabel(t.dueDate))}</span>
           <button class="btn--icon" data-action="delete-task" data-id="${esc(t.taskId)}"
@@ -1664,7 +1717,7 @@ function renderDrawer() {
         <span class="chip">${esc(p.pathway || 'No pathway')}</span>
         <span class="chip ${breach ? 'chip--danger' : ''}">⏱ ${days} days in stage</span>
         <span class="chip">${esc(p.status || '—')}</span>
-        ${hasCmsStatus(p) ? `<span class="chip" title="CMS status">🛡 ${esc(p.cmsStatus)}</span>` : ''}
+        ${hasCmsStatus(p) ? `<span class="chip" title="CMS status">${icon('supervision', 'icon icon--sm')} ${esc(p.cmsStatus)}</span>` : ''}
       </div>
     </div>
 
@@ -1729,7 +1782,7 @@ function renderDrawer() {
     <div class="drawer__section">
       <div class="btn-row">
         <button class="btn" data-action="send-supervision" data-id="${esc(p.patientId)}">
-          ${(p.cmsStatus || '') === 'Awaiting' ? '✓ Awaiting supervision' : 'Send to supervision'}
+          ${(p.cmsStatus || '') === 'Awaiting' ? `${icon('check', 'icon icon--sm')} Awaiting supervision` : 'Send to supervision'}
         </button>
         <button class="btn btn--danger" data-action="delete-patient" data-id="${esc(p.patientId)}">Delete patient</button>
       </div>
@@ -1743,14 +1796,14 @@ function renderDrawer() {
 function refreshDrawerSupervision(p) {
   const awaiting = (p.cmsStatus || '') === 'Awaiting';
   const btn = document.querySelector('.drawer [data-action="send-supervision"]');
-  if (btn) btn.textContent = awaiting ? '✓ Awaiting supervision' : 'Send to supervision';
+  if (btn) btn.innerHTML = awaiting ? `${icon('check', 'icon icon--sm')} Awaiting supervision` : 'Send to supervision';
   const input = document.querySelector('#drawer-cms');
   if (input) input.value = p.cmsStatus || '';
   const chips = document.querySelector('.drawer__head .patient-card__chips');
   if (chips) {
     const chip = chips.querySelector('.chip[title="CMS status"]');
     if (p.cmsStatus) {
-      const html = `<span class="chip" title="CMS status">🛡 ${esc(p.cmsStatus)}</span>`;
+      const html = `<span class="chip" title="CMS status">${icon('supervision', 'icon icon--sm')} ${esc(p.cmsStatus)}</span>`;
       if (chip) chip.outerHTML = html;
       else chips.insertAdjacentHTML('beforeend', html);
     } else if (chip) {
@@ -2296,7 +2349,7 @@ function nextUpCard(iso) {
   }
   return `<div class="panel" id="diary-next">
     <h2 class="panel__title">⏭ Up next</h2>
-    <p class="field-row__hint">Nothing else scheduled. Space to breathe. 🌿</p>
+    <p class="field-row__hint">Nothing else scheduled. Space to breathe.</p>
   </div>`;
 }
 
@@ -2434,7 +2487,7 @@ function diaryDayHTML(date) {
       data-action="edit-event" data-id="${esc(e.eventId)}" data-date="${esc(e.date)}" title="${esc(tip)}">
       <span class="diary-event__title">${esc(e.title)}</span>
       <span class="diary-event__meta">${fmtTime(minutesOf(e.startTime))}–${fmtTime(minutesOf(e.endTime))}${pname ? ' · ' + esc(pname) : ''}</span>
-      ${isRecurring(e) ? '<span class="diary-event__repeat" title="Repeating">🔁</span>' : ''}
+      ${isRecurring(e) ? `<span class="diary-event__repeat" title="Repeating">${icon('repeat', 'icon icon--sm')}</span>` : ''}
     </button>`;
   }).join('');
 
@@ -2484,7 +2537,7 @@ function diaryDayHTML(date) {
           const sc = Math.round(taskScore(t));
           return `<div class="diary-suggest__item" draggable="true" data-drag-type="task" data-task-id="${esc(t.taskId)}" title="Drag to add to diary · Score ${sc}">
             <div class="diary-suggest__title">${esc(t.title)}</div>
-            <div class="diary-suggest__meta">${p ? esc(p) : 'General'}${est} · ★ ${sc}</div>
+            <div class="diary-suggest__meta">${p ? esc(p) : 'General'}${est} · score ${sc}</div>
           </div>`;
         }).join('') : `<div class="field-row__hint">No tasks to suggest</div>`}
       </div>
@@ -2563,7 +2616,7 @@ function diaryWeekHTML(date) {
         data-action="edit-event" data-id="${esc(e.eventId)}" data-date="${esc(e.date)}" title="${esc(e.title)}${pname ? ' · ' + esc(pname) : ''}">
         <span class="diary-event__title">${esc(e.title)}</span>
         <span class="diary-event__meta">${fmtTime(minutesOf(e.startTime))}${pname ? ' · ' + esc(pname) : ''}</span>
-        ${isRecurring(e) ? '<span class="diary-event__repeat" title="Repeating">🔁</span>' : ''}
+        ${isRecurring(e) ? `<span class="diary-event__repeat" title="Repeating">${icon('repeat', 'icon icon--sm')}</span>` : ''}
       </button>`;
     }).join('');
     return `<div class="diary-track" data-band-start="${startM}" data-band-end="${endM}">${slots.join('')}${blocks}${hover}</div>`;
@@ -2898,7 +2951,7 @@ function renderSettings() {
   const bytes = new Blob([JSON.stringify(state)]).size;
   const recovery = Storage.hasRecovered() ? `
     <div class="panel panel--warning">
-      <h2 class="panel__title">⚠ Recovered data</h2>
+      <h2 class="panel__title">Recovered data</h2>
       <p class="field-row__hint">
         A previous save could not be read, so the app started fresh. An untouched
         copy was kept in case you want to inspect or repair it. Download it before
@@ -3091,16 +3144,17 @@ function playTaskCompleteSound() {
 function celebrate() {
   if (!state.settings.rewardAnimation) return;
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  toast('✅ Nice one!', 'success');
+  toast('Nice one!', 'success');
   playTaskCompleteSound();
   if (reduce) return;
   const burst = document.createElement('div');
   burst.className = 'confetti';
   burst.setAttribute('aria-hidden', 'true');
-  const emojis = ['🎉', '✨', '⭐', '✅', '🎊'];
+  // Two-tone paper chips in the app's palette instead of emoji.
+  const colors = ['var(--accent)', 'var(--success)', 'var(--warning)', 'var(--danger)', 'var(--text-muted)'];
   for (let i = 0; i < 14; i++) {
     const s = document.createElement('span');
-    s.textContent = emojis[i % emojis.length];
+    s.style.background = colors[i % colors.length];
     s.style.left = `${Math.random() * 100}vw`;
     s.style.animationDelay = `${Math.random() * 0.25}s`;
     burst.appendChild(s);
@@ -3153,7 +3207,7 @@ function paletteCommands() {
   return [
     nav('Go to Today', 'today', 'today'),
     nav('Go to Tasks', 'tasks', 'tasks'),
-    nav('Go to Caseload', 'caseload', 'caseload'),
+    nav('Go to Patients', 'caseload', 'caseload'),
     nav('Go to Diary', 'diary', 'diary'),
     nav('Go to Settings', 'settings', 'settings'),
     { label: 'Overdue tasks', kind: 'filter', value: 'overdue', icon: 'overdue' },
@@ -3486,7 +3540,7 @@ function openImportModal() {
 function importDropzoneHTML() {
   return `
     <div class="dropzone" id="import-dropzone" data-action="dropzone" role="button" tabindex="0" aria-label="Upload CSV">
-      <div class="dropzone__icon" aria-hidden="true">📄</div>
+      <div class="dropzone__icon" aria-hidden="true">${icon('file')}</div>
       <p><strong>${importSession ? 'Choose a different file?' : 'Drop your IAPTUS CSV here'}</strong></p>
       <p class="dropzone__hint">or click to browse · parsed locally in your browser, never uploaded</p>
     </div>
@@ -3575,7 +3629,7 @@ function renderImportMapping() {
     title: 'Import caseload CSV',
     body: `
       ${importDropzoneHTML()}
-      <div class="import-meta">📎 ${esc(s.fileName)} · ${s.rows.length} rows · delimiter "<span class="mono">${esc(delim)}</span>"</div>
+      <div class="import-meta">${icon('paperclip', 'icon icon--sm')} ${esc(s.fileName)} · ${s.rows.length} rows · delimiter "<span class="mono">${esc(delim)}</span>"</div>
 
       <div class="panel" style="margin-top:var(--space-4)">
         <h2 class="panel__title">Map columns</h2>
@@ -3653,6 +3707,7 @@ function buildDemoState() {
     ['IAP-1004', 'Grace Okafor', 'Treatment',    21, 'Active',  'Fortnightly'],
     ['IAP-1005', 'Sam Whitfield','Assessment',    3, 'Active',  ''],
   ];
+  // taste-skill-ignore: user-chosen patient tag colours, not a UI accent.
   const colors = ['#0f766e', '#b4690e', '#2a5db0', '#7c3aed', '#c0342b'];
   s.patients = people.map(([id, name, pathway, days, status, cmsStatus], i) => ({
     patientId: id, name, pathway, daysInStage: days, status, cmsStatus,
@@ -3709,8 +3764,11 @@ document.addEventListener('click', async (e) => {
   if (e.target.id === 'modal-root') return closeModal();
 
   // Close the caseload context menu unless interacting with it.
-  if (caseloadMenuId && !e.target.closest('.row-menu') && !e.target.closest('[data-action="toggle-rownav"]')) {
+  if (caseloadMenuId && !e.target.closest('.row-menu')
+      && !e.target.closest('[data-action="toggle-rownav"]')
+      && !e.target.closest('[data-action="toggle-colormenu"]')) {
     caseloadMenuId = null;
+    caseloadMenuKind = 'row';
     const route = ROUTES.find((r) => r.id === currentRouteId());
     if (route && route.render === renderCaseload) renderView();
   }
@@ -3895,10 +3953,20 @@ document.addEventListener('click', async (e) => {
       await save();
       break;
     }
-    case 'toggle-rownav':
-      caseloadMenuId = caseloadMenuId === el.dataset.id ? null : el.dataset.id;
+    case 'toggle-rownav': {
+      const wasOpen = caseloadMenuId === el.dataset.id && caseloadMenuKind === 'row';
+      caseloadMenuKind = 'row';
+      caseloadMenuId = wasOpen ? null : el.dataset.id;
       renderView();
       break;
+    }
+    case 'toggle-colormenu': {
+      const wasOpen = caseloadMenuId === el.dataset.id && caseloadMenuKind === 'color';
+      caseloadMenuKind = 'color';
+      caseloadMenuId = wasOpen ? null : el.dataset.id;
+      renderView();
+      break;
+    }
     case 'toggle-patient-tasks': {
       const id = el.dataset.id;
       if (expandedPatients.has(id)) expandedPatients.delete(id);
@@ -4371,9 +4439,9 @@ function updateThemeToggle() {
   const t = state.settings.theme || 'light';
   btn.setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
   btn.setAttribute('title', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
-  const icon = btn.querySelector('.theme-toggle__icon');
+  const iconEl = btn.querySelector('.theme-toggle__icon');
   const label = btn.querySelector('.theme-toggle__label');
-  if (icon) icon.textContent = t === 'dark' ? '☾' : '☼';
+  if (iconEl) iconEl.innerHTML = icon(t === 'dark' ? 'moon' : 'sun');
   if (label) label.textContent = t === 'dark' ? 'Dark' : 'Light';
 }
 

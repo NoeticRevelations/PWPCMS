@@ -53,13 +53,13 @@
   --danger: #DC2626;
   --warning: #D97706;
   --success: #059669;
-  --info: #4F46E5;
+  --info: #0D9488;
 
   /* Semantic tints (backgrounds for badges) */
   --danger-tint: #FEE2E2;
   --warning-tint: #FEF3C7;
   --success-tint: #ECFDF5;
-  --info-tint: #E0E7FF;
+  --info-tint: #CCFBF1;
   --accent-tint: #E0F2FE;
 
   --focus-ring: 3px solid #2f7dff;
@@ -76,8 +76,8 @@
   --border: #2A3038;
   --border-strong: #3B4450;
   --text: #F8FAFC;
-  --text-muted: #94A3B8;
-  --text-faint: #94A3B8;
+  --text-muted: #CBD5E1;
+  --text-faint: #A9B4C2;
 
   --accent: #38BDF8;
   --accent-hover: #0EA5E9;
@@ -85,12 +85,12 @@
   --danger: #EF4444;
   --warning: #FBBF24;
   --success: #34D399;
-  --info: #818CF8;
+  --info: #5EEAD4;
 
   --danger-tint: #450A0A;
   --warning-tint: #451A03;
   --success-tint: #052E16;
-  --info-tint: #1E1B4B;
+  --info-tint: #134E4A;
   --accent-tint: #082F49;
 
   --focus-ring: 3px solid #a5b4fc;
@@ -255,8 +255,8 @@ input[readonly] { background: var(--surface-2); color: var(--text-muted); cursor
   min-height: 38px;
   transition: color .15s ease, background .15s ease, box-shadow .15s ease, transform .15s ease;
 }
-.side-link:hover { background: var(--surface-2); color: var(--text); transform: translateY(-1px); }
-.side-link[aria-current="page"], .side-link--on { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 100%); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+.side-link:hover { background: var(--surface-2); color: var(--text); }
+.side-link[aria-current="page"], .side-link--on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
 .side-link__icon { flex: none; width: 18px; height: 18px; display: grid; place-items: center; }
 .side-link__icon svg { width: 18px; height: 18px; display: block; }
 .side-link__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -291,7 +291,7 @@ input[readonly] { background: var(--surface-2); color: var(--text-muted); cursor
   cursor: pointer;
   transition: background .15s ease, border-color .15s ease, transform .15s ease;
 }
-.theme-toggle:hover { background: var(--surface-3); transform: translateY(-1px); }
+.theme-toggle:hover { background: var(--surface-3); }
 .theme-toggle__icon { line-height: 1; }
 .theme-toggle__label { font-size: var(--fs-sm); }
 .icon-btn {
@@ -309,7 +309,15 @@ input[readonly] { background: var(--surface-2); color: var(--text-muted); cursor
   padding: 0;
   transition: background .15s ease, color .15s ease, transform .15s ease;
 }
-.icon-btn:hover { background: var(--surface-3); color: var(--text); transform: translateY(-1px); }
+.icon-btn:hover { background: var(--surface-3); color: var(--text); }
+/* The 1px lift on hover is decoration: only run it when the user is happy
+   for movement (prefers-reduced-motion: reduce already kills transitions,
+   but a transform is an instant jump, not an animation, so gate it here). */
+@media (prefers-reduced-motion: no-preference) {
+  .side-link:hover,
+  .theme-toggle:hover,
+  .icon-btn:hover { transform: translateY(-1px); }
+}
 .icon-btn .icon { width: 18px; height: 18px; }
 .side-pills { display: flex; flex-wrap: nowrap; gap: var(--space-1); }
 
@@ -351,6 +359,13 @@ input[readonly] { background: var(--surface-2); color: var(--text-muted); cursor
 
 
 .view__head { margin-bottom: var(--space-4); }
+/* Header with actions: title block left, buttons top-right (SaaS convention). */
+.view__head--split {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-4); flex-wrap: wrap;
+}
+.view__head--split > div { min-width: 0; }
+.view__actions { display: flex; align-items: center; gap: var(--space-2); flex: none; }
 .view__title { font-size: var(--fs-2xl); letter-spacing: -0.02em; }
 .view__subtitle { color: var(--text-muted); margin-top: var(--space-1); max-width: 65ch; }
 
@@ -423,7 +438,7 @@ input[readonly] { background: var(--surface-2); color: var(--text-muted); cursor
 .stat--danger { border-top-color: var(--danger); }
 .stat--warning { border-top-color: var(--warning); }
 .stat--success { border-top-color: var(--success); }
-.stat__value { font-size: var(--fs-lg); font-weight: 700; line-height: 1.1; }
+.stat__value { font-size: var(--fs-lg); font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .stat__label { color: var(--text-muted); font-size: var(--fs-sm); margin-top: var(--space-1); }
 
 /* Compact, tappable stat pills (Today view) */
@@ -438,7 +453,7 @@ input[readonly] { background: var(--surface-2); color: var(--text-muted); cursor
   font: inherit; color: var(--text); text-align: left;
 }
 button.stat--compact { cursor: pointer; }
-.stat--compact .stat__value { font-size: var(--fs-lg); }
+.stat--compact .stat__value { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
 .stat--compact .stat__label { margin-top: 0; }
 .stat--compact:hover { border-color: var(--border-strong); }
 
@@ -463,7 +478,7 @@ button.stat--compact { cursor: pointer; }
 .btn:hover { background: var(--surface-2); }
 .btn:active { transform: translateY(1px); }
 .btn--primary {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 96%, white) 0%, var(--accent) 100%);
+  background: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 88%, black);
   color: var(--accent-contrast);
   box-shadow: 0 1px 1px rgba(15, 23, 42, 0.08), 0 8px 20px -12px var(--accent);
@@ -495,7 +510,7 @@ button.stat--compact { cursor: pointer; }
   display: inline-flex; align-items: center; justify-content: flex-end;
   height: 56px; padding: 0;
   border: 1px solid color-mix(in srgb, var(--accent) 80%, black);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 96%, white) 0%, var(--accent) 100%);
+  background: var(--accent);
   box-shadow: var(--shadow-lg);
   transition: transform .2s ease, background .15s ease, box-shadow .25s ease;
 }
@@ -533,6 +548,13 @@ button.stat--compact { cursor: pointer; }
   0%   { transform: scale(1) rotate(0deg); }
   50%  { transform: scale(1.3) rotate(90deg); }
   100% { transform: scale(1) rotate(0deg); }
+}
+/* Touch affordance only: every desktop view has an inline quick-add and its
+   action buttons, so the FAB would be a duplicate — and it overlaps row
+   menus in the Tasks table. Below the phone breakpoint it earns its keep. */
+.fab { display: none; }
+@media (max-width: 860px) {
+  .fab { display: inline-flex; }
 }
 
 /* ---- Empty states ------------------------------------------------- */
@@ -590,8 +612,8 @@ button.stat--compact { cursor: pointer; }
 }
 .task-row:hover { background: var(--surface-2); }
 .task-row--overdue {
-  background: var(--danger-tint);
-  border-color: var(--danger);
+  /* Calm urgency: a thin red edge instead of flooding the whole row. */
+  box-shadow: inset 3px 0 0 var(--danger);
 }
 .task-row--overdue .task-row__meta { color: var(--danger); font-weight: 600; }
 
@@ -648,6 +670,17 @@ button.stat--compact { cursor: pointer; }
   background: var(--tag, var(--accent));
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, .45));
 }
+/* Untagged patients show a dashed placeholder circle so the colour control is
+   always visible where you'd look for it. */
+button.tag.tag--empty, .tag--empty {
+  background: transparent;
+  border: 1.5px dashed var(--border-strong);
+  filter: none;
+}
+/* The interactive variant (Caseload/Patients rows + cards) — a real button. */
+button.tag { appearance: none; border: 0; padding: 0; cursor: pointer; }
+button.tag:hover, button.tag:focus-visible { box-shadow: 0 0 0 3px var(--accent-tint); }
+button.tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tag-wrap, .id-wrap { display: inline-flex; align-items: center; gap: var(--space-1); }
 
 /* ---- Data table --------------------------------------------------- */
@@ -661,7 +694,7 @@ button.stat--compact { cursor: pointer; }
   text-transform: uppercase; letter-spacing: 0.03em;
 }
 .data-table tbody tr:hover { background: var(--surface-2); }
-.mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.mono { font-family: var(--font-mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 
 /* ---- CSV import modal -------------------------------------------- */
 .dropzone {
@@ -706,7 +739,7 @@ button.stat--compact { cursor: pointer; }
 .task-table .col-actions { text-align: right; white-space: nowrap; }
 .data-table th.num { text-align: right; }
 .task-line__title { font-weight: 600; }
-.task-line--overdue { background: var(--danger-tint); }
+.task-line--overdue td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
 .task-line--overdue td { border-bottom-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
 .task-line--overdue .col-due { font-weight: 700; }
 .task-line__pin { font-size: .85em; }
@@ -790,6 +823,9 @@ button.stat--compact { cursor: pointer; }
 
 /* Generic inline SVG icon (Phase C) */
 .icon { width: 16px; height: 16px; display: block; }
+/* Small variant for inside chips, captions and row meta text */
+.icon--sm { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; }
 
 .wait-badge { font-weight: 700; }
 .wait-badge--danger { color: var(--danger); }
@@ -810,6 +846,7 @@ button.stat--compact { cursor: pointer; }
   display: inline-block; min-width: 1.5em; text-align: center;
   background: var(--accent); color: var(--accent-contrast);
   border-radius: 999px; font-size: var(--fs-sm); padding: 0 var(--space-2); margin-left: var(--space-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .row-actions { position: relative; text-align: right; white-space: nowrap; }
@@ -836,6 +873,32 @@ button.stat--compact { cursor: pointer; }
 .table-panel .data-table tbody tr.caseload-row td:nth-child(5) {
   white-space: normal;
   min-width: 9rem;
+}
+
+/* ---- Tasks: fill the screen, scroll rows, sticky header ------------ */
+/* Same screen-filling pattern as the caseload: the page doesn't scroll, the
+   table does, and the column headings stay pinned above the rows. */
+.view--tasks {
+  flex: none; height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column;
+}
+.view--tasks .view__head,
+.view--tasks .quick-add,
+.view--tasks .caseload-controls,
+.view--tasks .field-row__hint { flex: none; }
+.view--tasks .table-wrap { flex: 1 1 auto; min-height: 12rem; display: flex; flex-direction: column; }
+.view--tasks .task-table-scroll {
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  border-radius: var(--radius-lg);
+}
+.task-table-scroll .data-table thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+.task-table-scroll .data-table th { color: var(--text-muted); }
+@media (max-width: 860px) {
+  .view--tasks { height: calc(100dvh - 56px); }
 }
 
 /* ---- Caseload: fill the screen and scroll the rows ------------------ */
@@ -976,6 +1039,12 @@ button.stat--compact { cursor: pointer; }
 .chip--danger { color: var(--danger); background: var(--danger-tint); border-color: var(--danger); }
 .chip--accent { color: var(--accent-contrast); background: var(--accent); border-color: var(--accent); }
 
+/* Empty-state and dropzone icons are now inline SVGs, not emoji glyphs. */
+.empty__icon { display: grid; place-items: center; color: var(--text-muted); }
+.empty__icon .icon,
+.dropzone__icon .icon { width: 44px; height: 44px; }
+.dropzone__icon { display: grid; place-items: center; color: var(--text-muted); }
+
 /* ---- Drawer ------------------------------------------------------- */
 .drawer-root { position: fixed; inset: 0; z-index: 45; visibility: hidden; }
 .drawer-root.open { visibility: visible; }
@@ -1114,6 +1183,7 @@ button.stat--compact { cursor: pointer; }
 .timeline__axis-label {
   position: absolute; top: 0; transform: translateX(-50%);
   font-size: 0.7rem; color: var(--text-muted); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .timeline__axis-label--first { transform: none; }
 .timeline__axis-label--last { transform: translateX(-100%); }
@@ -1172,8 +1242,9 @@ input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
 /* Completion confetti burst */
 .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 60; overflow: hidden; }
 .confetti span {
-  position: absolute; top: -1.8rem; font-size: 1.5rem;
-  animation: confetti-fall 1.3s ease-in forwards;
+  position: absolute; top: -1.2rem; width: 9px; height: 14px;
+  border-radius: 2px; opacity: .85;
+  animation: confetti-fall 1.3s ease-out forwards;
 }
 @keyframes confetti-fall {
   to { transform: translateY(106vh) rotate(220deg); opacity: 0; }
@@ -1206,6 +1277,7 @@ input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .diary-hour {
   position: absolute; right: var(--space-2); transform: translateY(-50%);
   font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .diary-track { position: relative; border-left: 1px solid var(--border); }
 .diary-now-line {
@@ -1299,7 +1371,7 @@ input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .diary-week__dow { font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
 .diary-week__num { font-weight: 700; }
-.diary-week__tot { font-size: var(--fs-sm); color: var(--text-muted); min-height: 1em; }
+.diary-week__tot { font-size: var(--fs-sm); color: var(--text-muted); min-height: 1em; font-variant-numeric: tabular-nums; }
 .diary-week__day--today { background: var(--accent-tint); }
 .diary-week__body { display: grid; grid-template-columns: 56px repeat(5, minmax(0, 1fr)); position: relative; }
 .diary-week__now {
@@ -1416,7 +1488,7 @@ input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Desktop: collapsible top nav */
 @media (min-width: 901px) {
-  .app { transition: all .18s ease; }
+  .app { transition: background-color .18s ease; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1465,6 +1537,18 @@ input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
 :root[data-density="compact"] .patient-grid { grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); }
 :root[data-density="compact"] .stat-grid { grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); }
 :root[data-density="compact"] .table-scroll { max-height: 320px; }
+/* Tighter cells in Compact so more rows fit; Comfy keeps the roomier default.
+   (.table-panel tables already use this spacing at every density.) */
+:root[data-density="compact"] .data-table th,
+:root[data-density="compact"] .data-table td { padding: var(--space-1) var(--space-2); }
+:root[data-density="compact"] .panel { padding: var(--space-3); }
+:root[data-density="compact"] .panel > .panel__title:first-child {
+  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-3)) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+:root[data-density="compact"] .panel__title--btn {
+  width: calc(100% + var(--space-3) * 2);
+}
 
 /* ==========================================================================
    Diary: fill the screen instead of living in a fixed-height window
