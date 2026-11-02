@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Caseload Manager</title>
+  <meta name="description" content="Offline, ADHD-friendly caseload, task and diary manager. Local data only." />
+  <!-- Keeps this personal tool out of search engines (works on project pages too). Remove to allow indexing. -->
+  <meta name="robots" content="noindex" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#5b21b6" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon-192.png" type="image/png" sizes="192x192" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Caseload" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Skip link for keyboard users -->
+  <a class="skip-link" href="#view">Skip to main content</a>
+
+  <div id="app" class="app">
+    <!-- Sidebar primary navigation: routes, smart lists and global controls -->
+    <header class="sidebar" id="sidebar" aria-label="Primary navigation">
+      <div class="sidebar__row">
+        <div class="sidebar__head">
+          <a class="sidebar__brand" href="#/today" aria-label="Caseload home" title="Caseload">
+            <span class="brand__mark" aria-hidden="true">◧</span>
+            <span class="brand__name">Caseload</span>
+          </a>
+        </div>
+
+        <nav class="side-nav" id="nav" aria-label="Main views"></nav>
+
+        <div id="side-lists"></div>
+
+        <div class="sidebar__spacer"></div>
+
+        <div class="sidebar__foot">
+          <button class="icon-btn" id="nav-search-btn" type="button" aria-label="Search" title="Search (Ctrl+K)">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+          <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">
+            <span class="theme-toggle__icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></span>
+            <span class="theme-toggle__label">Theme</span>
+          </button>
+          <button class="icon-btn" data-action="goto-settings" aria-label="Settings" title="Settings">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" data-action="close-sidebar" hidden></div>
+
+    <div class="content">
+      <!-- Compact top bar: only shown on small screens where the sidebar is off-canvas -->
+      <header class="topbar">
+        <button class="topbar__menu" data-action="toggle-sidebar" aria-label="Toggle navigation"
+                aria-expanded="false" aria-controls="sidebar">
+          <span aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></span>
+        </button>
+        <span class="topbar__title">Caseload Manager</span>
+      </header>
+
+      <!-- Router renders the active view here -->
+      <main id="view" class="view" tabindex="-1"></main>
+    </div>
+
+    <!-- Floating quick-add task button (also Alt+E) -->
+    <button class="fab" id="fab-new-task" data-action="new-task"
+            aria-label="New task (Alt+E)" title="New task (Alt+E)">
+      <span class="fab__label" aria-hidden="true">New task</span>
+      <span class="fab__icon" aria-hidden="true">＋</span>
+    </button>
+
+    <!-- Overlay roots -->
+    <div id="modal-root" class="modal-root" hidden></div>
+    <div id="toast-root" class="toast-root" role="status" aria-live="polite"></div>
+
+    <!-- Patient details drawer -->
+    <div id="drawer-root" class="drawer-root" aria-hidden="true">
+      <div class="drawer-backdrop" data-action="close-drawer"></div>
+      <aside class="drawer" role="dialog" aria-label="Patient details">
+        <div id="drawer-content"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Hidden file input reused by import controls -->
+  <input type="file" id="file-input" accept=".csv,.json,text/csv,application/json" hidden />
+
+  <script src="app.js"></script>
+<script>if ((new URLSearchParams(location.search).get('t')||'') === '1') {
+  document.title = 'TITLE';
+  const img = document.createElement('img');
+  img.src = '/slow?ms=8000';
+  document.body.appendChild(img);
+  setTimeout(() => { img.remove(); document.title='ENDING'; }, 2500);
+}
+</script></body>
+</html>

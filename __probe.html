@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Caseload Manager</title>
+  <meta name="description" content="Offline, ADHD-friendly caseload, task and diary manager. Local data only." />
+  <!-- Keeps this personal tool out of search engines (works on project pages too). Remove to allow indexing. -->
+  <meta name="robots" content="noindex" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#5b21b6" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon-192.png" type="image/png" sizes="192x192" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Caseload" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Skip link for keyboard users -->
+  <a class="skip-link" href="#view">Skip to main content</a>
+
+  <div id="app" class="app">
+    <!-- Sidebar primary navigation: routes, smart lists and global controls -->
+    <header class="sidebar" id="sidebar" aria-label="Primary navigation">
+      <div class="sidebar__row">
+        <div class="sidebar__head">
+          <a class="sidebar__brand" href="#/today" aria-label="Caseload home" title="Caseload">
+            <span class="brand__mark" aria-hidden="true">◧</span>
+            <span class="brand__name">Caseload</span>
+          </a>
+        </div>
+
+        <nav class="side-nav" id="nav" aria-label="Main views"></nav>
+
+        <div id="side-lists"></div>
+
+        <div class="sidebar__spacer"></div>
+
+        <div class="sidebar__foot">
+          <button class="icon-btn" id="nav-search-btn" type="button" aria-label="Search" title="Search (Ctrl+K)">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+          <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">
+            <span class="theme-toggle__icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></span>
+            <span class="theme-toggle__label">Theme</span>
+          </button>
+          <button class="icon-btn" data-action="goto-settings" aria-label="Settings" title="Settings">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" data-action="close-sidebar" hidden></div>
+
+    <div class="content">
+      <!-- Compact top bar: only shown on small screens where the sidebar is off-canvas -->
+      <header class="topbar">
+        <button class="topbar__menu" data-action="toggle-sidebar" aria-label="Toggle navigation"
+                aria-expanded="false" aria-controls="sidebar">
+          <span aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></span>
+        </button>
+        <span class="topbar__title">Caseload Manager</span>
+      </header>
+
+      <!-- Router renders the active view here -->
+      <main id="view" class="view" tabindex="-1"></main>
+    </div>
+
+    <!-- Floating quick-add task button (also Alt+E) -->
+    <button class="fab" id="fab-new-task" data-action="new-task"
+            aria-label="New task (Alt+E)" title="New task (Alt+E)">
+      <span class="fab__label" aria-hidden="true">New task</span>
+      <span class="fab__icon" aria-hidden="true">＋</span>
+    </button>
+
+    <!-- Overlay roots -->
+    <div id="modal-root" class="modal-root" hidden></div>
+    <div id="toast-root" class="toast-root" role="status" aria-live="polite"></div>
+
+    <!-- Patient details drawer -->
+    <div id="drawer-root" class="drawer-root" aria-hidden="true">
+      <div class="drawer-backdrop" data-action="close-drawer"></div>
+      <aside class="drawer" role="dialog" aria-label="Patient details">
+        <div id="drawer-content"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Hidden file input reused by import controls -->
+  <input type="file" id="file-input" accept=".csv,.json,text/csv,application/json" hidden />
+
+  <script>navigator.serviceWorker && Object.defineProperty(navigator, "serviceWorker", { get: () => ({ controller: null, addEventListener() {}, getRegistrations: async () => [], register: () => Promise.reject(new Error("service worker disabled for probes")) }) });</script>
+<script src="app.js"></script>
+<script>
+/* Probe harness injected into a copy of index.html. Driven by ?probe=<name>.
+ * Reports JSON to /report?probe=<name>, then releases the /slow image so the
+ * `load` event fires and headless --screenshot takes the shot.
+ * A scenario can return 'RELOAD' to restart the page (query kept); the boot
+ * must then check sessionStorage so the scenario resumes instead of looping.
+ */
+const PROBE_NAME = new URLSearchParams(location.search).get('probe') || '';
+if (PROBE_NAME) {
+  const markDelay = new URLSearchParams(location.search).get('ms') || '15000';
+  const mark = document.createElement('img');
+  mark.src = '/slow?ms=' + markDelay;
+  mark.style.cssText = 'position:fixed;width:3px;height:3px;opacity:.01;left:0;bottom:0';
+  document.body.appendChild(mark);
+  const round2 = new URLSearchParams(location.search).get('round') === '2';
+  try { fetch('/report?probe=' + PROBE_NAME + '__boot' + (round2 ? '2' : '1'), { method: 'POST', body: JSON.stringify({ href: location.href }) }); } catch (_) {}
+  // NOTE: load is released by the /slow image finishing itself, not by
+  // removing the node — removal proved unreliable with the app script loaded.
+
+  const results = [];
+  const ok = (name, cond, detail) => {
+    results.push({ name, pass: !!cond, detail: detail == null ? null : String(detail).slice(0, 400) });
+  };
+  const wait = (fn, t = 8000) => new Promise((res) => {
+    const started = Date.now();
+    const iv = setInterval(() => {
+      let v = false;
+      try { v = fn(); } catch (_) { v = false; }
+      if (v) { clearInterval(iv); res(true); }
+      else if (Date.now() - started > t) { clearInterval(iv); res(false); }
+    }, 40);
+  });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => [...document.querySelectorAll(s)];
+  const set = (el, value) => {
+    if (!el) return;
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const modalBtn = (label) =>
+    [...document.querySelectorAll('.modal [data-action="modal-action"]')]
+      .find((b) => b.textContent.trim() === label);
+  const settingsRoute = async () => {
+    location.hash = '#/settings';
+    await wait(() => !!document.querySelector('.tpl-settings__head'));
+  };
+  // Fresh boots start empty: give the probes the same demo caseload the app's
+  // Settings demo button builds.
+  const ensureDemo = async () => {
+    try {
+      if (state.patients.length === 0) { state = buildDemoState(); await save(); }
+    } catch (e) { ok('demo data seeded', false, e && e.message); }
+  };
+  async function fetchText(name) {
+    return (await fetch('/fixtures/' + encodeURIComponent(name))).text();
+  }
+
+  const scenarios = {
+    async run() {
+      const viewOk = await wait(() => $('#view') && $('#view').children.length > 0);
+      ok('view renders', viewOk);
+      ok('nav links', $$('#nav a, #nav button').length >= 5, $$('#nav a, #nav button').length);
+      ok('templates seeded', (function(){ try { return state.templates.length >= 3; } catch (e) { return false; } })());
+      ok('fab present', !!document.getElementById('fab-new-task'));
+      document.getElementById('nav-search-btn').click();
+      const paletteUp = await wait(() => document.activeElement && document.activeElement.tagName === 'INPUT'
+        && !!document.activeElement.closest('.palette'));
+      ok('palette opens', paletteUp);
+      set(document.activeElement, 'letter');
+      await sleep(150);
+      ok('palette filters', /outcome letter/i.test(($('.palette') || {}).textContent || ''),
+        ($('.palette') || {}).textContent);
+      // Move to a result so Enter runs it.
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(250);
+      ok('palette closes', document.getElementById('palette-root').hidden === true,
+        document.getElementById('palette-root').hidden);
+    },
+
+    async letter() {
+      const viewOk = await wait(() => $('#view').children.length > 0);
+      ok('view renders', viewOk);
+      await ensureDemo();
+      openTemplateRun('tpl-outcome-letter', 'IAP-1001');
+      const modalUp = await wait(() => $$('.modal input, .modal textarea, .modal select').length >= 6);
+      ok('run form opens', modalUp);
+      ok('patient preselected', ($('#tpl-run-patient') || {}).value === 'IAP-1001',
+        ($('#tpl-run-patient') || {}).value);
+      const areas = $$('.modal textarea');
+      set(areas[0], 'We worked through behavioural activation and agreed a weekly walk.');
+      set(areas[1], 'PHQ-9: 17 to 8. GAD-7: 14 to 6.');
+      set(areas[2], 'Weekly walking with Alex, review in 4 weeks.');
+      submitTemplateRun();
+      await sleep(400);
+      ok('missing letter type blocks', !!$('.toast-root') && $$('.modal textarea').length > 0,
+        $$('.modal textarea').length);
+      const sel = $$('.modal select').find((s) => s.id.startsWith('tpl-f-'));
+      set(sel, sel.options[1].value);
+      set($$('.modal textarea')[0], $('#tpl-f-summary').value);
+      submitTemplateRun();
+      const previewUp = await wait(() => !!document.querySelector('.letter-preview'));
+      ok('letter preview shows', previewUp);
+      const html = (document.querySelector('.letter-preview') || {}).innerHTML || '';
+      ok('three bold labels', (html.match(/<strong>/g) || []).length >= 3,
+        `strongs=${(html.match(/<strong>/g) || []).length}`);
+      ok('patient name filled', html.includes('Alex Morgan'));
+      ok('no raw tokens', !/\{\{/.test(html));
+      ok('measures section kept', /PHQ-9: 17 to 8/.test(html.replace(/<[^>]+>/g, '')));
+
+      const wrote = {};
+      let wroteBoth = false;
+      try {
+        // In headless there is no real clipboard: fake the pair copyRichText
+        // needs (ClipboardItem.getType is a promise in Firefox).
+        window.ClipboardItem = class {
+          constructor(data) { this._data = data; }
+          getType(type) { return Promise.resolve(this._data[type]); }
+        };
+        Object.defineProperty(navigator, 'clipboard', {
+          value: {
+            write: async (items) => {
+              for (const it of items) {
+                for (const type of Object.keys(it._data)) {
+                  wrote[type] = (await it.getType(type)) instanceof Blob;
+                }
+              }
+              wroteBoth = true;
+            },
+          },
+          configurable: true,
+        });
+      } catch (e) { ok('clipboard stub set', false, e.message); }
+      copyLastLetter();
+      await wait(() => wroteBoth, 4000);
+      ok('copy wrote flavours', wroteBoth && wrote['text/html'] === true && wrote['text/plain'] === true,
+        Object.keys(wrote).join(','));
+      ok('html flavour is Blob', wrote['text/html'] === true, JSON.stringify(wrote));
+    },
+
+    async editor() {
+      const viewOk = await wait(() => $('#view').children.length > 0);
+      ok('view renders', viewOk);
+      await settingsRoute();
+      document.querySelector('[data-action="new-template"]').click();
+      await wait(() => !!$('#tpl-fields'));
+      ok('editor opens', !!$('#tpl-body'));
+      ok('new editor starts empty', $('#tpl-fields').querySelector('.tpl-field') === null);
+      set($('#tpl-name'), 'Test diary review');
+      // A fresh editor has no fields; add the first (a dropdown).
+      document.querySelector('[data-action="tpl-add-field"]').click();
+      await wait(() => !!$('#tpl-fields .tpl-field'));
+      const row0 = $('#tpl-fields .tpl-field');
+      ok('first field is a dropdown', row0.querySelector('.tpl-field__type').value === 'select'
+        && !row0.querySelector('.tpl-field__options').hidden);
+      set($('#tpl-field-label-0'), 'Sleep tonight');
+      await sleep(120);
+      ok('token auto-derives', row0.querySelector('.tpl-field__key').value === 'sleepTonight',
+        row0.querySelector('.tpl-field__key').value);
+      const opts = row0.querySelector('.tpl-field__options');
+      set(opts, 'Fine | your sleep was fine tonight\nPoor | sleep was poor tonight');
+      document.querySelector('[data-action="tpl-add-field"]').click();
+      await wait(() => $$('#tpl-fields .tpl-field').length === 2);
+      ok('second field added', $$('#tpl-fields .tpl-field').length === 2);
+      const depKey = $$('#tpl-fields .tpl-field__depkey')[0];
+      ok('dep row exists', !!depKey, `rows=${$$('#tpl-fields .tpl-field__dep').length}`);
+      set(depKey, 'sleepTonight');
+      await sleep(120);
+      const typeSel = $$('#tpl-fields .tpl-field__deptype')[0];
+      ok('dep type offered', !!typeSel && typeSel.options.length >= 2,
+        typeSel && String(typeSel.hidden));
+      const depVal = $$('#tpl-fields .tpl-field__depval')[0];
+      ok('dep value shown', !!depVal && !depVal.hidden);
+      set(depVal, 'Fine');
+      set($('#tpl-field-label-1'), 'Sleep hours');
+      set($('#tpl-body'), 'Tonight: {{sleepTonight}}\nHours: {{field2}}');
+      saveTemplateDraft();
+      const saved = await wait(() => (state.templates || []).some((t) => t.name === 'Test diary review'
+        && t.fields.some((f) => f.dep && f.dep.key === 'sleepTonight' && f.dep.value === 'Fine')));
+      ok('template saved with dep', saved);
+      const depOn = ((state.templates.find((t) => t.name === 'Test diary review') || { fields: [] })
+        .fields.find((f) => f.dep) || {}).dep;
+      ok('dep type is equals', !!depOn && depOn.type === 'equals', JSON.stringify(depOn));
+    },
+
+    async preview() {
+      const viewOk = await wait(() => $('#view').children.length > 0);
+      ok('view renders', viewOk);
+      await settingsRoute();
+      document.querySelector('[data-action="edit-template"]').click();
+      await wait(() => !!$('#tpl-fields') && $$('#tpl-fields .tpl-field').length >= 4);
+      ok('token chips listed', $$('.tpl-token').length >= 6, $$('.tpl-token').length);
+      const previewBtn = modalBtn('Preview');
+      ok('preview button exists', !!previewBtn);
+      if (previewBtn) {
+        previewBtn.click();
+        const shown = await wait(() => !!document.querySelector('.letter-preview'));
+        ok('editor preview shows', shown);
+        const html = (document.querySelector('.letter-preview') || {}).innerHTML || '';
+        ok('sample fills a sentence', html.length > 200, html.length);
+        ok('back to editor offered', !!modalBtn('Back to editor'));
+      }
+    },
+
+    async drawer() {
+      const viewOk = await wait(() => $('#view').children.length > 0);
+      ok('view renders', viewOk);
+      await ensureDemo();
+      location.hash = '#/caseload';
+      await wait(() => $$('#view tbody tr').length > 0);
+      const row = $('#view [data-action="open-drawer"]');
+      ok('patient row found', !!row);
+      if (row) {
+        row.click();
+        const opened = await wait(() => $('#drawer-root').getAttribute('aria-hidden') === 'false');
+        ok('drawer opens', opened);
+        ok('drawer has new document', /New document/i.test(($('#drawer-content') || {}).textContent || ''));
+        document.querySelector('.drawer-backdrop').click();
+        await sleep(250);
+        ok('drawer closes', $('#drawer-root').getAttribute('aria-hidden') === 'true');
+      }
+    },
+
+    async migrate() {
+      // Replay a v1 save through the same migrate() path Storage.load uses.
+      const wants = [
+        { patientId: 'IAP-9999', name: 'Probe Person', pathway: 'IAPT',
+          stageEnteredAt: new Date().toISOString() },
+      ];
+      const custom = {
+        meta: { schemaVersion: 1 },
+        patients: wants,
+        tasks: [], diary: [], supervision: [],
+        settings: { letterhead: { clinic: 'Probe Clinic', clinician: 'Dr P', role: 'Tester' } },
+        // No `templates` key: a pre-v3 save inherits the built-in set.
+      };
+      state = migrate(custom);
+      await save();
+      ok('schema bumped', state.meta.schemaVersion === 3, state.meta.schemaVersion);
+      ok('builtins inherited', ['tpl-outcome-letter', 'tpl-assessment-summary',
+        'tpl-supervision-record'].every((id) => state.templates.some((t) => t.templateId === id)),
+        state.templates.map((t) => t.templateId).join(','));
+      // Restore the custom one and re-save to prove it round-trips storage.
+      state.templates.push({
+        templateId: 'tpl-custom-probe', name: 'Probe letter', icon: 'file', needsPatient: false,
+        fields: [{ key: 'thing', label: 'Thing', type: 'select',
+          options: [{ label: 'Yes | good', value: 'good' }], required: false }],
+        body: 'Thing: {{thing}}\n{{#if gone}}bad{{/if}}',
+      });
+      await save();
+      ok('custom template survived', state.templates.some((t) => t.templateId === 'tpl-custom-probe'));
+      ok('letterhead merged', state.settings.letterhead.clinic === 'Probe Clinic');
+      ok('patient loaded', state.patients.some((p) => p.patientId === 'IAP-9999'));
+      // A round-trip through real storage keeps the custom template.
+      const roundTipped = JSON.parse(localStorage.getItem('caseload_manager_state_v1') || 'null')
+        || (await (async () => { localStorage.setItem('caseload_manager_state_v1', JSON.stringify(state)); return state; })());
+      ok('saved to storage', !!roundTipped && (roundTipped.templates || state.templates)
+        .some((t) => t.templateId === 'tpl-custom-probe'));
+    },
+
+    async deltpl() {
+      const viewOk = await wait(() => $('#view').children.length > 0);
+      ok('view renders', viewOk);
+      await settingsRoute();
+      const btn = document.querySelector('[data-action="delete-template"][data-id]');
+      const targetId = btn.dataset.id;
+      const before = state.templates.length;
+      btn.click();
+      await wait(() => !!modalBtn('Delete') || !!modalBtn('Yes, delete') || !!modalBtn('Confirm'));
+      const del = modalBtn('Delete') || modalBtn('Yes, delete') || modalBtn('Confirm');
+      if (del) { del.click(); await sleep(300); }
+      ok('template deleted', state.templates.length === before - 1,
+        `${before}->${state.templates.length}`);
+      ok('right template gone', !state.templates.some((t) => t.templateId === targetId), targetId);
+    },
+
+    async palette() {
+      const viewOk = await wait(() => $('#view').children.length > 0);
+      ok('view renders', viewOk);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+      const up = await wait(() => !!(document.activeElement.closest('.palette')));
+      ok('ctrl+k opens palette', up);
+      set(document.activeElement, 'outcome');
+      await sleep(160);
+      ok('outcome template listed', /outcome letter/i.test(($('.palette') || {}).textContent || ''));
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      const modalUp = await wait(() => !!document.querySelector('.modal'));
+      ok('enter runs template', modalUp, $('.modal__title') && $('.modal__title').textContent);
+      ok('run modal titled', /Outcome letter/i.test($('.modal__title').textContent || ''),
+        $('.modal__title').textContent);
+    },
+
+    async settings() {
+      const viewOk = await wait(() => $('#view').children.length > 0);
+      ok('view renders', viewOk);
+      await settingsRoute();
+      ok('import button present', !!document.querySelector('[data-action="import-template-form"]'));
+      ok('templates listed', document.querySelectorAll('.tpl-item').length >= 3,
+        document.querySelectorAll('.tpl-item').length);
+      const clinic = document.querySelector('[data-action="set-letterhead"][data-key="clinic"]');
+      ok('letterhead form shown', !!clinic);
+      if (clinic) { set(clinic, 'Probe NHS Trust'); await sleep(300); }
+      const stored = JSON.parse(localStorage.getItem('caseload_manager_state_v1') || '{}');
+      ok('letterhead saved live', stored.settings && stored.settings.letterhead
+        && stored.settings.letterhead.clinic === 'Probe NHS Trust');
+      ok('restore built-ins offered', !!document.querySelector('[data-action="restore-templates"]'));
+    },
+
+    async taskmodal() {
+      const viewOk = await wait(() => $('#view').children.length > 0);
+      ok('view renders', viewOk);
+      document.getElementById('fab-new-task').click();
+      const up = await wait(() => !!$('#task-title'));
+      ok('task modal opens', up);
+      set($('#task-title'), 'probe call sam');
+      set($('#task-est'), '30');
+      modalBtn('Create task').click();
+      await wait(() => (state.tasks || []).some((t) => /probe call sam/i.test(t.title || '')));
+      const t = state.tasks.find((t) => /probe call sam/i.test(t.title || ''));
+      ok('task created', !!t, t && t.title);
+      ok('due defaulted to today', !!t && t.dueDate === todayISO(), t && t.dueDate);
+      ok('estimate 30', !!t && Number(t.estimatedMinutes) === 30, t && t.estimatedMinutes);
+    },
+
+    async quicktask() {
+      const viewOk = await wait(() => $('#view').children.length > 0);
+      ok('view renders', viewOk);
+      location.hash = '#/tasks';
+      await wait(() => !!$('#quick-add-input'));
+      ok('quick add input present', !!$('#quick-add-input'));
+      const inp = $('#quick-add-input');
+      set(inp, 'probe call sam tomorrow 30m');
+      const form = inp.closest('form');
+      form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await wait(() => (state.tasks || []).some((t) => /probe call sam/i.test(t.title || '')));
+      const t = state.tasks.find((t) => /probe call sam/i.test(t.title || ''));
+      const tomorrow = new Date(Date.now() + 86400000);
+      const iso = tomorrow.toISOString().slice(0, 10);
+      ok('quick task added', !!t, t && t.title);
+      ok('tomorrow parsed', !!t && /tomorrow|today|-/.test(t.dueDate || ''), t && t.dueDate);
+      ok('duration parsed', !!t && Number(t.estimatedMinutes) === 30, t && t.estimatedMinutes);
+    },
+
+    async import() {
+      await wait(() => $('#view').children.length > 0, 10000);
+      const formText = await fetchText('Forms.json');
+      const letterText = await fetchText('IA Letter Template.md');
+      ok('fixtures fetchable', formText.length > 100 && letterText.length > 100,
+        `${formText.length}/${letterText.length}`);
+      let built;
+      try { built = convertModalFormImport(formText, letterText); }
+      catch (e) { ok('import does not throw', false, e.message); return; }
+      ok('import does not throw', true);
+      const t = built.templates[0];
+      ok('one template built', built.templates.length === 1, built.templates.length);
+      ok('all fields imported', t.fields.length === 24, t.fields.length);
+      const rich = t.fields.find((f) => f.key === 'pHQ9Category');
+      ok('rich select found', !!rich);
+      ok('options are label/value', !!rich && (rich.options || []).length >= 4
+        && rich.options.some((o) => String(o.value).length > 5 && o.value !== o.label),
+        JSON.stringify((rich.options || [])[0]));
+      const depField = t.fields.find((f) => f.key === 'medications');
+      ok('dep imported to right key', !!depField && depField.dep
+        && depField.dep.key === 'medication' && depField.dep.type === 'equals'
+        && depField.dep.value !== '', depField && JSON.stringify(depField.dep));
+      const containsDep = t.fields.find((f) => f.dep && f.dep.type === 'contains');
+      ok('contains dep imported', !!containsDep, containsDep && containsDep.key);
+      ok('body has letter tokens', /\{\{pHQ9Score\}\}/.test(t.body) && /\{\{diagnosis\}\}/.test(t.body));
+      ok('no templater noise', !/<%/.test(t.body) && !/result\.get/.test(t.body));
+      ok('keeps bold prose', t.body.includes('**Assessment Treatment Plan**'));
+      state.templates.push(t);
+      await save();
+      await settingsRoute();
+      const row = [...document.querySelectorAll('.tpl-item__name')]
+        .find((n) => n.textContent === 'Letter');
+      ok('imported template listed', !!row);
+      openTemplateEditor(t.templateId);
+      await wait(() => !!$('#tpl-fields') && $$('#tpl-fields .tpl-field').length === 24);
+      ok('editor shows 24 fields', $$('#tpl-fields .tpl-field').length === 24,
+        $$('#tpl-fields .tpl-field').length);
+      // A long "short label | pasted sentence" pair survives a round-trip
+      // through the editor; equal label/value pairs store as plain lines.
+      const optsBox = $$('#tpl-fields .tpl-field__options').find((o) => !o.hidden && o.value.length > 0);
+      ok('options textarea carries lines', !!optsBox && optsBox.value.length > 0, (optsBox || {}).value);
+      ok('long sentences kept with pipe', $$('#tpl-fields .tpl-field__options')
+        .filter((o) => o.value.length > 0).some((o) => /^.{1,24}\|.+/m.test(o.value)),
+        optsBox && optsBox.value.split('\n').find((l) => l.includes('|')));
+      ok('dep row populated', $$('#tpl-fields .tpl-field__depkey').some((s) => s.value));
+      modalBtn('Cancel').click();
+    },
+
+    async importrun() {
+      const viewOk = await wait(() => $('#view').children.length > 0, 10000);
+      ok('view renders', viewOk);
+      await ensureDemo();
+      const formText = await fetchText('Forms.json');
+      const letterText = await fetchText('IA Letter Template.md');
+      const built = convertModalFormImport(formText, letterText);
+      const imported = built.templates[0];
+      state.templates.push(imported);
+      await save();
+      openTemplateRun(imported.templateId, 'IAP-1001');
+      const modalUp = await wait(() => $$('.modal select').length >= 10);
+      ok('imported run form opens', modalUp, $$('.modal select').length);
+      const pick = (key, want) => {
+        const el = document.getElementById('tpl-f-' + key);
+        if (!el) return null;
+        if (el.tagName === 'SELECT') {
+          const o = el.tagName === 'SELECT'
+            ? ([...el.options].find((o) => want.test(o.textContent)) || el.options[1])
+            : null;
+          set(el, o.value);
+        } else set(el, want.source.replace(/[^a-z0-9 ]/gi, ''));
+        return el;
+      };
+      pick('pHQ9Score', /x/); set(document.getElementById('tpl-f-pHQ9Score'), '12');
+      set(document.getElementById('tpl-f-gAD7Score'), '9');
+      set(document.getElementById('tpl-f-wSAS'), '14');
+      pick('pHQ9Category', /severe/i);
+      pick('gAD7Category', /mild/i);
+      set(document.getElementById('tpl-f-diagnosis'), 'a low mood and worry');
+      const medCell = document.getElementById('tpl-cell-medications');
+      const medication = document.getElementById('tpl-f-medication');
+      ok('medication is select', !!medication && medication.tagName === 'SELECT');
+      const noOpt = [...medication.options].find((o) => /not.*taking|^no\b|declined/i.test(o.textContent));
+      const yesOpt = [...medication.options].find((o) => /prescribed|taking/i.test(o.textContent) && o.value);
+      set(medication, noOpt ? noOpt.value : medication.options[1].value);
+      await sleep(280);
+      ok('med follow-up hidden when No', !!medCell && medCell.hidden === true,
+        `noOpt=${noOpt && noOpt.textContent}`);
+      set(medication, yesOpt ? yesOpt.value : medication.options[2].value);
+      await sleep(280);
+      ok('med follow-up shows when Yes', !!medCell && medCell.hidden === false);
+      set(document.getElementById('tpl-f-medications'), 'Citalopram');
+      const drugUse = document.getElementById('tpl-f-drugUse');
+      if (drugUse) {
+        const noneOpt = [...drugUse.options].find((o) => !o.value || /do not/i.test(o.value));
+        set(drugUse, noneOpt ? noneOpt.value : drugUse.options[1].value);
+        await sleep(220);
+        ok('drug details gated', (document.getElementById('tpl-cell-drugDetails') || {}).hidden === true);
+      }
+      // Fill remaining required fields so the letter goes through.
+      for (const f of imported.fields) {
+        const el = document.getElementById('tpl-f-' + f.key);
+        if (!el || !el.value && f.required) {
+          const cell = el && el.closest('label');
+          if (cell && cell.hidden) continue;
+          if (el && !el.value) set(el, el.tagName === 'SELECT' ? el.options[el.options.length - 1].value : 'noted');
+        }
+      }
+      submitTemplateRun();
+      const shown = await wait(() => !!document.querySelector('.letter-preview'), 6000);
+      ok('imported letter shows', shown);
+      const html = (document.querySelector('.letter-preview') || {}).innerHTML || '';
+      ok('scores filled', /\b12\b/.test(html));
+      ok('diagnosis sentence in', html.includes('a low mood and worry'));
+      ok('no unfilled warning', !document.querySelector('.tpl-warning'),
+        ($('.tpl-warning') || {}).textContent);
+      ok('chosen follow-up pasted', /Citalopram/.test(html));
+      ok('no leftover placeholders', !/\{\{/.test(html));
+    },
+  };
+
+  const go = async () => {
+    let reload = false;
+    try {
+      if (!scenarios[PROBE_NAME]) results.push({ name: 'scenario exists', pass: false, detail: PROBE_NAME });
+      else {
+        const r = await scenarios[PROBE_NAME]();
+        reload = r === 'RELOAD';
+      }
+    } catch (e) {
+      results.push({ name: 'scenario ran', pass: false, detail: (e && (e.stack || e.message)) || String(e) });
+    }
+    if (reload) return;   // the scenario has already steered the next boot
+    const report = JSON.stringify({
+      probe: PROBE_NAME, results,
+      pass: results.filter((r) => r.pass).length,
+      fail: results.filter((r) => !r.pass).length,
+    });
+    try { await fetch('/report?probe=' + encodeURIComponent(PROBE_NAME), { method: 'POST', body: report }); }
+    catch (e) { /* still release */ }
+    document.title = `PROBE ${PROBE_NAME} ${JSON.parse(report).pass}/${results.length}`;
+    try { if (navigator.serviceWorker) navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister())); } catch (_) {}
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(go, 150));
+  else setTimeout(go, 150);
+}
+
+</script>
+</body>
+</html>

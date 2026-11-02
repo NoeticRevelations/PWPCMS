@@ -595,10 +595,16 @@ button.stat--compact { cursor: pointer; }
 .modal {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
-  width: min(640px, 100%); max-height: 86vh; overflow: auto;
+  width: min(640px, 100%); max-height: 86vh;
+  /* Flex column so the head and the action row stay put while the body
+     scrolls — long forms never bury their Save/Cancel buttons. */
+  display: flex; flex-direction: column; overflow: hidden;
   padding: var(--space-5);
 }
-.modal__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); }
+.modal__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); flex: none; }
+.modal__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/* Actions rendered by openModal sit directly in the modal, after the body. */
+.modal > .btn-row { flex: none; }
 .modal__title { font-size: var(--fs-xl); }
 .modal__hint { color: var(--text-muted); font-size: var(--fs-sm); margin: 0 0 var(--space-4); }
 
@@ -1082,10 +1088,11 @@ button.tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px
 .task-form label { display: flex; flex-direction: column; gap: var(--space-1); font-weight: 600; }
 /* Read-only values shown inside a form (e.g. the fixed patient ID). */
 .task-form input[readonly] { background: var(--surface-2); color: var(--text-muted); }
-.task-form input, .task-form select {
+.task-form input, .task-form select, .task-form textarea {
   background: var(--surface); color: var(--text); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font-weight: 400;
 }
+.task-form textarea { width: 100%; resize: vertical; line-height: 1.55; }
 .task-form__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
 
 /* ---- Settings rows ------------------------------------------------ */
@@ -1600,4 +1607,177 @@ input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 860px) {
   /* Leave room for the sticky mobile topbar. */
   .view--diary { height: calc(100dvh - 56px); }
+}
+
+/* ---- Letter templates --------------------------------------------- */
+.modal--wide { width: min(860px, 100%); }
+
+/* Template chooser */
+.tpl-picks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.tpl-pick {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%;
+  text-align: left; cursor: pointer; font: inherit; color: var(--text);
+  padding: var(--space-3); border: 0; border-radius: var(--radius-sm);
+  background: transparent;
+}
+.tpl-pick:hover, .tpl-pick:focus-visible { background: var(--surface-2); }
+.tpl-pick__icon {
+  flex: none; display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: 50%; background: var(--surface-2); color: var(--text-muted);
+}
+.tpl-pick:hover .tpl-pick__icon { background: var(--surface-3); color: var(--text); }
+.tpl-pick__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.tpl-pick__name { font-weight: 700; }
+.tpl-pick__desc { color: var(--text-muted); font-size: var(--fs-sm); }
+.tpl-pick__go { flex: none; color: var(--text-faint); transform: rotate(-90deg); }
+
+/* Running a template */
+.tpl-context { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-4); }
+.tpl-run__patient {
+  display: flex; flex-direction: column; gap: var(--space-1);
+  font-weight: 600; margin-bottom: var(--space-4);
+}
+.tpl-run__patient select {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font-weight: 400;
+}
+.tpl-run__grid { align-items: start; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.task-form__wide { grid-column: 1 / -1; }
+
+/* The finished letter, set like a page */
+.letter-preview {
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: clamp(var(--space-4), 3vw, var(--space-6));
+  font-size: var(--fs-base); line-height: 1.6;
+}
+.letter-preview p { margin: 0 0 var(--space-3); }
+.letter-preview p:last-child { margin-bottom: 0; }
+.letter-preview h3 {
+  font-size: var(--fs-base); letter-spacing: 0;
+  margin: var(--space-4) 0 var(--space-1);
+}
+.letter-preview h3:first-child { margin-top: 0; }
+.letter-preview ul { margin: 0 0 var(--space-3); padding-left: 1.4em; }
+.letter-preview li { margin-bottom: var(--space-1); }
+.letter-preview code {
+  font-family: inherit; background: var(--surface-3);
+  padding: 0 3px; border-radius: 3px;
+}
+.tpl-warning {
+  background: var(--warning-tint); color: var(--text);
+  border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm); margin: 0 0 var(--space-3);
+}
+
+/* Settings list */
+.tpl-settings__head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3);
+}
+.tpl-settings__head .field-row__hint { margin-top: var(--space-1); max-width: 62ch; }
+.tpl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.tpl-list + .btn-row { margin-bottom: var(--space-2); }
+.tpl-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+}
+.tpl-item:hover { background: var(--surface-2); }
+.tpl-item__icon { flex: none; display: grid; place-items: center; color: var(--text-muted); }
+.tpl-item__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.tpl-item__name { font-weight: 700; }
+.tpl-item__desc {
+  color: var(--text-muted); font-size: var(--fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tpl-item__actions { flex: none; display: flex; align-items: center; gap: var(--space-1); }
+
+/* Editor */
+.tpl-editor__head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-3); margin-top: var(--space-5);
+}
+.tpl-editor__head .panel__subhead { margin: 0; }
+.tpl-fields { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); }
+.tpl-field {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  background: var(--surface-2); border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+.tpl-field__main {
+  display: grid; align-items: center; gap: var(--space-2);
+  grid-template-columns: minmax(130px, 1.4fr) minmax(96px, .9fr) minmax(130px, 1fr) auto auto;
+}
+.tpl-field input[type="text"], .tpl-field select, .tpl-field__options {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2);
+  font: inherit; font-weight: 400; min-width: 0;
+}
+.tpl-field__key { font-size: var(--fs-sm); color: var(--text-muted); }
+.tpl-field__req {
+  display: flex; align-items: center; gap: var(--space-1);
+  font-size: var(--fs-sm); font-weight: 600; white-space: nowrap;
+}
+.tpl-field__options { width: 100%; }
+.tpl-field__remove { color: var(--text-faint); }
+.tpl-field__remove:hover { color: var(--danger); }
+
+/* Template body editor — monospace because it is literal markup. */
+.tpl-body {
+  width: 100%; margin-top: var(--space-2);
+  font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.55; /* taste-skill-ignore */
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: var(--space-3); resize: vertical;
+}
+.tpl-tokens { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); margin-top: var(--space-2); }
+.tpl-tokens__label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
+/* Placeholder chips are literal tokens, so monospace is the honest face. */
+.tpl-token {
+  appearance: none; cursor: pointer; font-family: var(--font-mono); /* taste-skill-ignore */
+  font-size: var(--fs-sm); color: var(--text-muted);
+  background: var(--surface-2); border: 0; border-radius: 999px;
+  padding: 2px var(--space-2);
+}
+.tpl-token:hover, .tpl-token:focus-visible { background: var(--accent-tint); color: var(--text); }
+.tpl-token--ctx { color: var(--text-faint); }
+.tpl-token--ctx:hover { color: var(--text); }
+
+/* Dependency rule row in the editor — small, secondary, tucked under the field. */
+.tpl-field__dep {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm); color: var(--text-muted);
+  border-top: 1px solid var(--border); padding-top: var(--space-2);
+}
+.tpl-field__dep[hidden] { display: none; }
+.tpl-field__dep select, .tpl-field__dep input[type="text"] {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 2px var(--space-2); font: inherit; font-weight: 400; min-width: 0;
+}
+.tpl-field__dep select { max-width: 220px; }
+.tpl-field__dep input[type="text"] { flex: 1 1 140px; }
+.tpl-field__dep .tpl-field__depoff { color: var(--text-faint); }
+/* Run form: note under a conditionally shown field. */
+.tpl-run__dep-hint { display: block; font-size: var(--fs-sm); color: var(--text-muted); margin-top: 2px; }
+
+/* Obsidian import modal */
+.tpl-import { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+.tpl-import__row {
+  display: flex; align-items: center; gap: var(--space-3);
+  background: var(--surface-2); border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3); flex-wrap: wrap;
+}
+.tpl-import__row .btn { flex: none; }
+.tpl-import__name {
+  font-size: var(--fs-sm); color: var(--text-muted); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tpl-import__name[data-set] { color: var(--text); font-weight: 600; }
+
+@media (max-width: 720px) {
+  .tpl-field__main { grid-template-columns: 1fr 1fr; }
+  .tpl-field__label { grid-column: 1 / -1; }
+  .tpl-item { flex-wrap: wrap; }
+  .tpl-item__actions { width: 100%; justify-content: flex-end; }
+  .tpl-field__dep select { max-width: none; flex: 1 1 100%; }
 }

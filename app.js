@@ -14,7 +14,7 @@
 /* --------------------------------------------------------------------------
  * 1. Constants & default state
  * ------------------------------------------------------------------------ */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const LS_KEY = 'caseload_manager_state_v1';       // localStorage record
 const IDB_NAME = 'caseload_manager';
 const IDB_STORE = 'kv';
@@ -28,7 +28,9 @@ function defaultState() {
     patients: [],
     tasks: [],
     diary: [],
+    templates: seedTemplates(),          // letter/document templates
     settings: {
+      letterhead: { clinic: '', clinician: '', role: '' },
       theme: 'light',
       workdayStart: '08:00',
       workdayEnd: '18:00',
@@ -165,6 +167,7 @@ const ICON_PATHS = {
   inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/>',
   repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
   file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   paperclip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
@@ -356,15 +359,22 @@ function migrate(data) {
   out.settings.weights = Object.assign({}, base.settings.weights, (data.settings || {}).weights || {});
   out.settings.tasksView = Object.assign({}, base.settings.tasksView, (data.settings || {}).tasksView || {});
   out.settings.supervisionView = Object.assign({}, base.settings.supervisionView, (data.settings || {}).supervisionView || {});
+  out.settings.letterhead = Object.assign({}, base.settings.letterhead, (data.settings || {}).letterhead || {});
   // v1 → v2: the Supervision view first shipped grouping by "None"; make CMS status the default.
   const prevSchema = (data.meta && data.meta.schemaVersion) || 0;
   if (prevSchema < 2 && out.settings.supervisionView.groupBy === 'none') {
     out.settings.supervisionView.groupBy = 'cmsStatus';
   }
+  // v2 → v3: letter templates arrived. A save with no template list inherits
+  // the built-ins from defaultState(); a v3 save with an empty list means the
+  // user deleted them deliberately, so it is left alone.
   out.meta = Object.assign({}, base.meta, data.meta || {});
   out.patients = Array.isArray(out.patients) ? out.patients : [];
   out.tasks = Array.isArray(out.tasks) ? out.tasks : [];
   out.diary = Array.isArray(out.diary) ? out.diary : [];
+  out.templates = (Array.isArray(out.templates) ? out.templates : seedTemplates())
+    .filter((t) => t && typeof t === 'object' && t.templateId)
+    .map((t) => ({ ...t, fields: Array.isArray(t.fields) ? t.fields : [] }));
   out.meta.schemaVersion = SCHEMA_VERSION;
   return out;
 }
@@ -1773,6 +1783,14 @@ function renderDrawer() {
 
     <div class="drawer__section">
       <div class="drawer__section-head">
+        <h3 class="panel__title">Documents</h3>
+        <button class="btn" data-action="new-document" data-id="${esc(p.patientId)}">＋ New document</button>
+      </div>
+      <p class="field-row__hint">Generate an outcome letter, assessment summary or supervision record from a template, then copy it into your email or letter.</p>
+    </div>
+
+    <div class="drawer__section">
+      <div class="drawer__section-head">
         <h3 class="panel__title">Tasks</h3>
         <button class="btn" data-action="add-task" data-id="${esc(p.patientId)}">＋ Add task</button>
       </div>
@@ -3046,6 +3064,8 @@ function renderSettings() {
       </div>
     </div>
 
+    ${templateSettingsHTML()}
+
     <div class="panel">
       <h2 class="panel__title">Data & storage</h2>
       <div class="field-row">
@@ -3165,11 +3185,11 @@ function celebrate() {
 
 let lastFocusedEl = null;   // element to restore focus to when the modal closes
 
-function openModal({ title, body, actions = [] }) {
+function openModal({ title, body, actions = [], wide = false }) {
   const root = $('#modal-root');
   if (root.hidden) lastFocusedEl = document.activeElement;   // remember the trigger
   root.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    <div class="modal${wide ? ' modal--wide' : ''}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
       <div class="modal__head">
         <h2 class="modal__title">${esc(title)}</h2>
         <button class="btn btn--ghost" data-action="close-modal" aria-label="Close">${icon('x')}</button>
@@ -3216,6 +3236,10 @@ function paletteCommands() {
     { label: 'Long waits', kind: 'breach', value: '1', icon: 'caseload' },
     { label: 'New task…', kind: 'new-task', value: '', icon: 'plus' },
     { label: 'New patient…', kind: 'new-patient', value: '', icon: 'plus' },
+    { label: 'New document…', kind: 'templates', value: '', icon: 'file' },
+    ...(state.templates || []).map((t) => ({
+      label: t.name, sub: 'Document template', kind: 'run-template', value: t.templateId, icon: t.icon || 'file',
+    })),
   ];
 }
 
@@ -3327,6 +3351,8 @@ async function runPalette(ds) {
   }
   if (kind === 'new-task') { openTaskModal(null); return; }
   if (kind === 'new-patient') { openPatientModal(null); return; }
+  if (kind === 'templates') { openTemplatePicker(null); return; }
+  if (kind === 'run-template') { openTemplateRun(value); return; }
   if (kind === 'patient') {
     if (currentRouteId() === 'caseload') openDrawer(value);
     else { pendingDrawerId = value; location.hash = '#/caseload'; }
@@ -3334,6 +3360,1102 @@ async function runPalette(ds) {
   }
   if (kind === 'task') { openTaskModal(null, value); return; }
   if (kind === 'add-task') { createQuickTask(value); return; }
+}
+
+/* --------------------------------------------------------------------------
+ * 8c. Letter templates
+ * --------------------------------------------------------------------------
+ * A template is data, not code: a name, a list of form fields, and a body in
+ * which {{placeholders}} are substituted. Bodies accept a small, safe subset
+ * of markdown (**bold**, *italic*, "- " bullets, "## " headings) so the copied
+ * letter keeps its formatting as rich text. Nothing generated is stored — the
+ * output is copied to the clipboard and lives wherever it is pasted.
+ * ------------------------------------------------------------------------ */
+
+/** Long, localised date for letters: 1 November 2026. */
+function templateLongDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/** Built-in templates, seeded once on first run / upgrade. */
+function seedTemplates() {
+  return [
+    {
+      templateId: 'tpl-outcome-letter',
+      name: 'Outcome letter',
+      description: 'Summarise a session, the outcome measures and the agreed plan.',
+      icon: 'file',
+      needsPatient: true,
+      fields: [
+        { key: 'sessionType', label: 'Letter type', type: 'select', options: ['Discharge', 'Final review', 'Interim review'], required: true },
+        { key: 'sessionDate', label: 'Session date', type: 'date', defaultValue: 'today', required: true },
+        { key: 'summary', label: 'What we discussed', type: 'textarea', required: true, placeholder: 'The work covered in the session…' },
+        { key: 'scores', label: 'Outcome measures', type: 'textarea', placeholder: 'PHQ-9: 17 → 8\nGAD-7: 14 → 6' },
+        { key: 'plan', label: 'Plan and next steps', type: 'textarea', placeholder: 'What happens next, and who does it…' },
+        { key: 'nextSteps', label: 'Anything else to add', type: 'text', placeholder: 'Optional' },
+      ],
+      body: `{{letterhead.clinic}}
+
+{{todayLong}}
+
+Dear {{patient.name}},
+
+**Re: {{patient.name}} — {{sessionType}}, {{sessionDate}}**
+
+Thank you for meeting with me on {{sessionDate}}. This letter summarises our conversation and the plan we agreed.
+
+**What we discussed**
+
+{{summary}}
+
+{{#if scores}}
+**Outcome measures**
+
+{{scores}}
+{{/if}}
+
+{{#if plan}}
+**Plan and next steps**
+
+{{plan}}
+{{/if}}
+
+{{nextSteps}}
+
+If anything here does not match your understanding, please contact the service so we can put it right.
+
+Yours sincerely,
+
+{{letterhead.clinician}}
+{{letterhead.role}}`,
+    },
+    {
+      templateId: 'tpl-assessment-summary',
+      name: 'Assessment summary',
+      description: 'A structured summary of an assessment, formulation and recommendations.',
+      icon: 'file',
+      needsPatient: true,
+      fields: [
+        { key: 'assessmentType', label: 'Assessment type', type: 'select', options: ['Initial assessment', 'Re-assessment', 'Review'], required: true },
+        { key: 'assessmentDate', label: 'Assessment date', type: 'date', defaultValue: 'today', required: true },
+        { key: 'reason', label: 'Reason for referral', type: 'textarea', required: true },
+        { key: 'background', label: 'Background', type: 'textarea' },
+        { key: 'formulation', label: 'Formulation', type: 'textarea' },
+        { key: 'risk', label: 'Risk', type: 'textarea' },
+        { key: 'recommendations', label: 'Recommendations', type: 'textarea' },
+        { key: 'nextAppointment', label: 'Next appointment', type: 'text' },
+      ],
+      body: `{{letterhead.clinic}}
+
+{{todayLong}}
+
+**{{assessmentType}} summary**
+
+Patient: {{patient.name}}
+Patient ID: {{patient.patientId}}
+Pathway: {{patient.pathway}}
+Assessment date: {{assessmentDate}}
+
+**Reason for referral**
+
+{{reason}}
+
+{{#if background}}
+**Background**
+
+{{background}}
+{{/if}}
+
+{{#if formulation}}
+**Formulation**
+
+{{formulation}}
+{{/if}}
+
+{{#if risk}}
+**Risk**
+
+{{risk}}
+{{/if}}
+
+{{#if recommendations}}
+**Recommendations**
+
+{{recommendations}}
+{{/if}}
+
+{{#if nextAppointment}}
+**Next appointment**
+
+{{nextAppointment}}
+{{/if}}
+
+{{letterhead.clinician}}
+{{letterhead.role}}`,
+    },
+    {
+      templateId: 'tpl-supervision-record',
+      name: 'Supervision record',
+      description: 'Capture a supervision session: focus, themes and agreed actions.',
+      icon: 'supervision',
+      needsPatient: true,
+      fields: [
+        { key: 'supervisionDate', label: 'Supervision date', type: 'date', defaultValue: 'today', required: true },
+        { key: 'supervisor', label: 'Supervisor', type: 'text' },
+        { key: 'focus', label: 'Case and focus', type: 'textarea', required: true },
+        { key: 'themes', label: 'Themes discussed', type: 'textarea' },
+        { key: 'actions', label: 'Actions agreed', type: 'textarea' },
+        { key: 'nextDate', label: 'Next supervision', type: 'date' },
+      ],
+      body: `**Supervision record**
+
+Date: {{supervisionDate}}
+{{#if supervisor}}Supervisor: {{supervisor}}
+{{/if}}Patient: {{patient.name}} ({{patient.patientId}})
+Pathway: {{patient.pathway}} · {{patient.daysInStage}} days in stage
+
+**Case and focus**
+
+{{focus}}
+
+{{#if themes}}
+**Themes discussed**
+
+{{themes}}
+{{/if}}
+
+{{#if actions}}
+**Actions agreed**
+
+{{actions}}
+{{/if}}
+
+{{#if nextDate}}
+**Next supervision**
+
+{{nextDate}}
+{{/if}}
+
+{{letterhead.clinician}}
+{{letterhead.role}}`,
+    },
+  ];
+}
+
+const TEMPLATE_FIELD_TYPES = [
+  ['text', 'Short text'],
+  ['textarea', 'Paragraph text'],
+  ['date', 'Date'],
+  ['select', 'Dropdown'],
+  ['number', 'Number'],
+];
+
+/**
+ * Normalise a dropdown option into { label, value }. Options may be stored as
+ * plain strings ("Severe"), or as "Label | sentence injected into the letter"
+ * imports. The label is what the form shows; the value is what {{field}}
+ * becomes — so a one-word choice can paste a whole paragraph.
+ */
+function templateOption(field, opt) {
+  const raw = typeof opt === 'string' ? opt : String((opt && (opt.label ?? opt.value)) ?? '');
+  const cut = raw.indexOf('|');
+  if (cut < 0) return { label: raw, value: raw };
+  const label = raw.slice(0, cut).trim();
+  const value = raw.slice(cut + 1).trim();
+  return { label: label || value, value: value || label };
+}
+
+/** A dropdown field as a list of { label, value } pairs. */
+function templateOptions(field) {
+  return (field && field.options || []).filter(Boolean).map((o) => templateOption(field, o));
+}
+
+/**
+ * Serialise back to storage form: strings when label === value, otherwise
+ * "label | value" — keeps homemade templates readable in a JSON backup.
+ */
+function templateOptionStored(field, opt) {
+  if (!opt || (!opt.label && !opt.value)) return { label: '', value: '' };
+  return opt.label === opt.value ? { label: opt.label, value: opt.label } : { label: opt.label || opt.value, value: opt.value };
+}
+
+/**
+ * Hidden-field rule, shown as a Modal-Forms style condition:
+ * { key: other-field token, type: 'equals' | 'contains', value } or null.
+ * "equals" compares the other field's answer; "contains" looks for a fragment.
+ */
+function templateDepActive(srcValue, dep) {
+  if (!dep || !dep.key) return true;
+  const v = String(srcValue == null ? '' : srcValue);
+  if (dep.type === 'contains') return !!dep.value && v.includes(dep.value);
+  return v === String(dep.value == null ? '' : dep.value).trim();
+}
+
+/** Placeholders the app can fill in without the form. */
+function templateContextTokens() {
+  return [
+    ['patient.name', 'Patient name'],
+    ['patient.patientId', 'Patient ID'],
+    ['patient.pathway', 'Pathway'],
+    ['patient.status', 'Status'],
+    ['patient.cmsStatus', 'CMS status'],
+    ['patient.daysInStage', 'Days in stage'],
+    ['today', 'Today (short date)'],
+    ['todayLong', 'Today (long date)'],
+    ['letterhead.clinician', 'Your name'],
+    ['letterhead.role', 'Your role'],
+    ['letterhead.clinic', 'Clinic / service'],
+  ];
+}
+
+function findTemplate(templateId) {
+  return state.templates.find((t) => t.templateId === templateId) || null;
+}
+
+/** Slug a field key down to a safe placeholder token. */
+function normaliseTemplateKey(key) {
+  const cleaned = String(key || '')
+    .replace(/[^A-Za-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map((word, i) => (i === 0 ? word[0].toLowerCase() + word.slice(1) : word[0].toUpperCase() + word.slice(1)))
+    .join('');
+  return cleaned || 'field';
+}
+
+/** First value for a field when opening its form. */
+function templateFieldDefault(field) {
+  if (field.defaultValue === 'today') return todayISO();
+  return field.defaultValue != null ? String(field.defaultValue) : '';
+}
+
+/** Every value a body can reference, for one patient and one set of answers. */
+function templateContext(template, patient, values) {
+  const p = patient || null;
+  const weekStart = startOfWeekISO(todayISO());
+  const weekEvents = eventsInRange(weekStart, addDays(weekStart, 6));
+  const weekTotals = hoursByCategory(weekEvents);
+  const ctx = {
+    today: templateLongDate(todayISO()),
+    todayLong: templateLongDate(todayISO()),
+    todayISO: todayISO(),
+    'patient.name': p ? p.name || '' : '',
+    'patient.patientId': p ? p.patientId || '' : '',
+    'patient.pathway': p ? p.pathway || '' : '',
+    'patient.status': p ? p.status || '' : '',
+    'patient.cmsStatus': p ? p.cmsStatus || '' : '',
+    'patient.daysInStage': p ? String(daysInStageOf(p)) : '',
+    'letterhead.clinic': state.settings.letterhead.clinic || '',
+    'letterhead.clinician': state.settings.letterhead.clinician || '',
+    'letterhead.role': state.settings.letterhead.role || '',
+    'diary.clinicalThisWeek': hoursLabel(weekTotals.clinical),
+    'diary.appointmentsThisWeek': String(weekEvents.length),
+  };
+  for (const field of template.fields || []) {
+    const raw = values && values[field.key] != null ? String(values[field.key]) : '';
+    if (field.type === 'date') {
+      ctx[field.key] = templateLongDate(raw);
+      ctx[field.key + 'ISO'] = raw;
+      ctx[field.key + 'Short'] = raw
+        ? new Date(raw + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+        : '';
+    } else {
+      ctx[field.key] = raw;
+    }
+  }
+  return ctx;
+}
+
+/** Replace {{tokens}}; unknown tokens become empty rather than literal noise.
+ *  Optional sections can be wrapped in {{#if field}} … {{/if}} (not nested). */
+function applyTemplate(body, ctx) {
+  let out = String(body || '');
+  out = out.replace(/\{\{#if\s+([\w.]+)\s*\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, key, inner) =>
+    ctx[key] != null && String(ctx[key]).trim() ? inner : '');
+  return out.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => (ctx[key] != null ? ctx[key] : ''));
+}
+
+/** Tokens used by a body that the app cannot resolve. */
+function templateUnknownTokens(template) {
+  const known = new Set(templateContextTokens().map(([k]) => k));
+  for (const field of template.fields || []) {
+    known.add(field.key);
+    if (field.type === 'date') { known.add(field.key + 'ISO'); known.add(field.key + 'Short'); }
+  }
+  const used = new Set();
+  String(template.body || '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => { used.add(key); return ''; });
+  return [...used].filter((k) => !known.has(k));
+}
+
+/** Inline markdown → HTML. Input is already escaped. */
+function templateInline(text) {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^\w*])\*([^*\n]+)\*(?=$|[^\w*])/g, '$1<em>$2</em>')
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>');
+}
+
+/** Render a substituted body as HTML (paragraphs, bullets, small headings). */
+function templateToHtml(body) {
+  const lines = String(body || '').replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  let para = [];
+  let list = null;
+  const flushPara = () => {
+    if (!para.length) return;
+    out.push(`<p>${para.map((line) => templateInline(esc(line))).join('<br>')}</p>`);
+    para = [];
+  };
+  const flushList = () => {
+    if (!list || !list.length) { list = null; return; }
+    out.push(`<ul>${list.map((li) => `<li>${templateInline(esc(li))}</li>`).join('')}</ul>`);
+    list = null;
+  };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+    const heading = line.match(/^\s*#{1,3}\s+(.*)$/);
+    if (bullet) { flushPara(); (list = list || []).push(bullet[1]); continue; }
+    flushList();
+    if (!line.trim()) { flushPara(); continue; }
+    if (heading) { flushPara(); out.push(`<h3>${templateInline(esc(heading[1]))}</h3>`); continue; }
+    para.push(line);
+  }
+  flushList(); flushPara();
+  return out.join('\n');
+}
+
+/** Plain-text version of the same body, for the text/plain clipboard flavour. */
+function templateToText(body) {
+  return String(body || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/^\s*#{1,3}\s+/gm, '')
+    .replace(/^\s*[-*•]\s+/gm, '• ')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/(^|[^\w*])\*([^*\n]+)\*(?=$|[^\w*])/g, '$1$2')
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+let lastLetter = null;   // { title, html, text } for the copy button
+let currentRunTemplateId = null;   // template the open run form belongs to
+
+/** Write rich + plain text to the clipboard, with a file:// friendly fallback. */
+async function copyRichText(html, text) {
+  try {
+    if (navigator.clipboard && window.ClipboardItem && navigator.clipboard.write) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+      })]);
+      return true;
+    }
+  } catch (_) { /* fall through to the selection trick */ }
+  try {
+    const holder = document.createElement('div');
+    holder.contentEditable = 'true';
+    holder.innerHTML = html;
+    holder.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none';
+    document.body.appendChild(holder);
+    const range = document.createRange();
+    range.selectNodeContents(holder);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges();
+    holder.remove();
+    if (ok) return true;
+  } catch (_) { /* fall through to plain text */ }
+  try { await navigator.clipboard.writeText(text); return true; } catch (_) { return false; }
+}
+
+/* ---- Template picker ---------------------------------------------- */
+
+/** Choose a template, optionally bound to a patient. */
+function openTemplatePicker(patientId = null) {
+  const templates = state.templates || [];
+  const patient = patientId ? state.patients.find((p) => p.patientId === patientId) : null;
+  const body = `
+    <p class="modal__hint">${patient
+      ? `Starting a document for <strong>${esc(patient.name)}</strong>. Their details fill themselves in.`
+      : 'Pick a template. You will choose the patient on the next step if the template needs one.'}</p>
+    ${templates.length ? `<ul class="tpl-picks">${templates.map((t) => `
+      <li>
+        <button class="tpl-pick" data-action="run-template" data-id="${esc(t.templateId)}"${patient ? ` data-patient="${esc(patient.patientId)}"` : ''}>
+          <span class="tpl-pick__icon">${icon(t.icon || 'file')}</span>
+          <span class="tpl-pick__text">
+            <span class="tpl-pick__name">${esc(t.name)}</span>
+            <span class="tpl-pick__desc">${esc(t.description || '')}</span>
+          </span>
+          <span class="tpl-pick__go">${icon('chevron')}</span>
+        </button>
+      </li>`).join('')}</ul>`
+      : `<p class="field-row__hint">No templates yet. Create one in Settings → Letter templates.</p>`}
+    <div class="btn-row" style="margin-top:var(--space-4)">
+      <button class="btn" data-action="manage-templates">Manage templates</button>
+    </div>`;
+  openModal({ title: 'New document', body, wide: true });
+}
+
+/* ---- Running a template ------------------------------------------- */
+
+/** The form a template asks for, with any answers already given preserved. */
+function openTemplateRun(templateId, patientId = null, givenValues = null, needsFocus = null) {
+  const template = findTemplate(templateId);
+  if (!template) { toast('That template no longer exists.', 'error'); return; }
+  currentRunTemplateId = template.templateId;
+  const patient = patientId ? state.patients.find((p) => p.patientId === patientId) : null;
+  const values = givenValues || {};
+  const requirePatient = !!template.needsPatient && state.patients.length > 0;
+
+  const patientOptions = [
+    `<option value="">${requirePatient ? 'Choose a patient…' : 'No patient / general'}</option>`,
+    ...state.patients.slice().sort((a, b) => a.name.localeCompare(b.name))
+      .map((p) => `<option value="${esc(p.patientId)}" ${patientId === p.patientId ? 'selected' : ''}>${esc(p.name)} · ${esc(p.patientId)}</option>`),
+  ].join('');
+
+  const fieldHTML = (template.fields || []).map((field) => {
+    const id = `tpl-f-${field.key}`;
+    const val = values[field.key] != null ? values[field.key] : templateFieldDefault(field);
+    const req = field.required ? ' required' : '';
+    const label = `${esc(field.label || field.key)}${field.required ? ' *' : ''}`;
+    let inner;
+    if (field.type === 'textarea') {
+      inner = `<textarea id="${id}" rows="3" placeholder="${esc(field.placeholder || '')}"${req}>${esc(val)}</textarea>`;
+    } else if (field.type === 'date') {
+      inner = `<input id="${id}" type="date" value="${esc(val)}"${req} />`;
+    } else if (field.type === 'number') {
+      inner = `<input id="${id}" type="number" value="${esc(val)}"${req} />`;
+    } else if (field.type === 'select') {
+      const opts = templateOptions(field);
+      inner = `<select id="${id}"${req}>
+        ${opts.some((o) => o.value === '') ? '' : '<option value="">Choose…</option>'}
+        ${opts.map((o) => `<option value="${esc(o.value)}" ${String(val) === String(o.value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+      </select>`;
+    } else {
+      inner = `<input id="${id}" type="text" value="${esc(val)}" placeholder="${esc(field.placeholder || '')}"${req} />`;
+    }
+    const depSrc = field.dep ? (template.fields || []).find((f) => f.key === field.dep.key) : null;
+    const hint = depSrc ? `<span class="tpl-run__dep-hint">shown depending on “${esc(depSrc.label || depSrc.key)}”</span>` : '';
+    return `<label id="tpl-cell-${esc(field.key)}" class="${field.type === 'textarea' ? 'task-form__wide' : ''}">${label}${inner}${hint}</label>`;
+  }).join('');
+
+  const contextChips = patient ? `<div class="tpl-context">
+      <span class="chip">${esc(patient.patientId)}</span>
+      <span class="chip">${esc(patient.pathway || 'No pathway')}</span>
+      <span class="chip">${esc(daysInStageOf(patient))} days in stage</span>
+      ${hasCmsStatus(patient) ? `<span class="chip">${icon('supervision', 'icon icon--sm')} ${esc(patient.cmsStatus)}</span>` : ''}
+    </div>` : '';
+
+  openModal({
+    title: template.name,
+    wide: true,
+    body: `
+      <p class="modal__hint">Fill in the fields below. Patient details, today's date and your letterhead are added automatically.</p>
+      ${contextChips}
+      ${state.patients.length ? `<label class="tpl-run__patient">Patient${requirePatient ? ' *' : ''}
+        <select id="tpl-run-patient">${patientOptions}</select>
+      </label>` : '<p class="field-row__hint">No patients on record yet — patient placeholders will be left blank.</p>'}
+      <div class="task-form"><div class="task-form__grid tpl-run__grid">${fieldHTML || '<p class="field-row__hint">This template asks for no extra information.</p>'}</div></div>`,
+    actions: [
+      { label: 'Cancel', onClick: closeModal },
+      { label: 'Generate letter', variant: 'primary', onClick: submitTemplateRun },
+    ],
+  });
+
+  // Follow-up questions appear/hide with the answer they depend on.
+  const syncDeps = () => (template.fields || []).forEach((field) => {
+    if (!field.dep || !field.dep.key) return;
+    const cell = document.getElementById(`tpl-cell-${field.key}`);
+    const input = document.getElementById(`tpl-f-${field.key}`);
+    const src = document.getElementById(`tpl-f-${field.dep.key}`);
+    if (!cell || !input) return;
+    const open = templateDepActive(src ? src.value : '', field.dep);
+    cell.hidden = !open;
+    if (!open && input.value) input.value = '';
+  });
+  (template.fields || []).forEach((field) => {
+    if (!field.dep || !field.dep.key) return;
+    const src = document.getElementById(`tpl-f-${field.dep.key}`);
+    if (src) src.addEventListener('change', syncDeps);
+  });
+  syncDeps();
+
+  if (needsFocus) {
+    const el = document.getElementById(needsFocus);
+    if (el) el.focus();
+  } else if (requirePatient && !patient) {
+    const sel = $('#tpl-run-patient');
+    if (sel) sel.focus();
+  } else {
+    const first = document.querySelector('.modal__body input, .modal__body select, .modal__body textarea');
+    if (first) first.focus();
+  }
+}
+
+/** Read the run form, validate it, then show the finished letter. */
+function submitTemplateRun() {
+  const template = findTemplate(currentRunTemplateId);
+  if (!template) return;
+  const patientId = ($('#tpl-run-patient') || {}).value || '';
+  const values = {};
+  for (const field of template.fields || []) {
+    const el = document.getElementById('tpl-f-' + field.key);
+    values[field.key] = el ? el.value : '';
+    // A follow-up whose condition isn't met counts as unanswered, even for "required".
+    const gated = field.dep && field.dep.key && !templateDepActive(values[field.dep.key] ?? '', field.dep);
+    if (gated) values[field.key] = '';
+    if (field.required && !gated && !String(values[field.key] || '').trim()) {
+      toast(`Fill in “${field.label || field.key}” before generating.`, 'error');
+      if (el) el.focus();
+      return;
+    }
+  }
+  if (template.needsPatient && state.patients.length && !patientId) {
+    toast('Choose the patient this document is for.', 'error');
+    const sel = $('#tpl-run-patient');
+    if (sel) sel.focus();
+    return;
+  }
+  showLetter(template, patientId, values);
+}
+
+/** Step two: the finished letter, ready to copy. */
+function showLetter(template, patientId, values) {
+  const patient = state.patients.find((p) => p.patientId === patientId) || null;
+  const ctx = templateContext(template, patient, values);
+  const filled = applyTemplate(template.body, ctx).trim();
+  const html = templateToHtml(filled);
+  const text = templateToText(filled);
+  lastLetter = { title: template.name, html, text };
+
+  const unknown = templateUnknownTokens(template);
+  openModal({
+    title: template.name,
+    wide: true,
+    body: `
+      <p class="modal__hint">Check the letter, then copy it. The rich-text copy keeps bold, italics and bullets when pasted into Word, Outlook or most email tools.</p>
+      ${unknown.length ? `<p class="tpl-warning">Unfilled placeholders: ${unknown.map((k) => `<code>{{${esc(k)}}}</code>`).join(', ')}</p>` : ''}
+      <article class="letter-preview">${html}</article>`,
+    actions: [
+      { label: 'Back', onClick: () => openTemplateRun(template.templateId, patientId, values) },
+      { label: 'Copy letter', variant: 'primary', onClick: copyLastLetter },
+    ],
+  });
+}
+
+async function copyLastLetter() {
+  if (!lastLetter) return;
+  const ok = await copyRichText(lastLetter.html, lastLetter.text);
+  if (ok) toast('Letter copied — paste it into your email or document.', 'success');
+  else toast('The clipboard is unavailable. Select the preview text and copy it manually.', 'error');
+}
+
+/* ---- Template editor ---------------------------------------------- */
+
+let editingTemplateId = null;
+
+/** Open the editor. A draft lets add/remove-field redraws keep what was typed. */
+function openTemplateEditor(templateId = null, draft = null, focusId = null) {
+  editingTemplateId = templateId;
+  const base = draft || (templateId ? findTemplate(templateId) : null) || {
+    name: '', description: '', icon: 'file', needsPatient: true, fields: [], body: '',
+  };
+  const t = {
+    name: base.name || '',
+    description: base.description || '',
+    icon: base.icon || 'file',
+    needsPatient: base.needsPatient !== false,
+    body: base.body || '',
+    fields: (base.fields || []).map((f) => ({ ...f, options: f.options || [] })),
+  };
+
+  const fieldRows = t.fields.map((f, i) => {
+    const optionsValue = templateOptions(f).map((o) => (o.label === o.value ? o.label : `${o.label} | ${o.value}`)).join('\n');
+    const prior = t.fields.slice(0, i);
+    const dep = f.dep || { key: '', type: 'equals', value: '' };
+    return `
+    <div class="tpl-field" data-key="${esc(f.key)}"${f.defaultValue ? ` data-default="${esc(f.defaultValue)}"` : ''}>
+      <div class="tpl-field__main">
+        <input class="tpl-field__label" id="tpl-field-label-${i}" type="text" value="${esc(f.label || '')}" placeholder="Label, e.g. Session type" aria-label="Field ${i + 1} label" />
+        <input class="tpl-field__key mono" type="text" value="${esc(f.key)}" placeholder="token" aria-label="Field ${i + 1} placeholder token" data-auto="${/^field\d*$/.test(f.key) ? 'true' : 'false'}" />
+        <select class="tpl-field__type" aria-label="Field ${i + 1} type">
+          ${TEMPLATE_FIELD_TYPES.map(([v, l]) => `<option value="${v}" ${f.type === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+        <label class="tpl-field__req"><input type="checkbox" ${f.required ? 'checked' : ''} /> Required</label>
+        <button class="btn btn--icon tpl-field__remove" data-action="tpl-remove-field" data-key="${esc(f.key)}" aria-label="Remove ${esc(f.label || 'field')}" title="Remove field">${icon('trash')}</button>
+      </div>
+      <textarea class="tpl-field__options" rows="3" placeholder="One choice per line — a short label, or Label | sentence to paste. e.g. Severe | symptoms were severe" aria-label="Field ${i + 1} options" ${f.type === 'select' ? '' : 'hidden'}>${esc(optionsValue)}</textarea>
+    ${prior.length ? `<div class="tpl-field__dep"${dep.key ? '' : ' hidden'}>
+        Show only when
+        <select class="tpl-field__depkey" aria-label="Field ${i + 1} dependency field">
+          <option value="">— always show —</option>
+          ${prior.map((p) => `<option value="${esc(p.key)}" ${dep.key === p.key ? 'selected' : ''}>${esc(p.label || p.key)}</option>`).join('')}
+        </select>
+        <select class="tpl-field__deptype" aria-label="Field ${i + 1} dependency test" ${dep.key ? '' : 'hidden'}>
+          <option value="equals" ${dep.type !== 'contains' ? 'selected' : ''}>answer is exactly</option>
+          <option value="contains" ${dep.type === 'contains' ? 'selected' : ''}>answer contains</option>
+        </select>
+        <input class="tpl-field__depval" type="text" value="${esc(dep.value || '')}" placeholder="the matching answer" aria-label="Field ${i + 1} dependency value" ${dep.key ? '' : 'hidden'} />
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  const tokens = t.fields.map((f) =>
+    `<button class="tpl-token" type="button" data-action="tpl-insert-token" data-token="${esc(f.key)}" data-field-key="${esc(f.key)}">{{${esc(f.key)}}}</button>`).join('');
+
+  openModal({
+    title: templateId ? 'Edit template' : 'New template',
+    wide: true,
+    body: `
+      <p class="modal__hint">Templates are stored on this device. The body is plain text with placeholders; use <strong>**bold**</strong>, <em>*italic*</em>, <code>- bullets</code> and <code>## headings</code>, which survive the rich-text copy. Wrap optional sections in <code>{{#if field}}…{{/if}}</code> so they disappear when the field is left blank.</p>
+      <div class="task-form">
+        <div class="task-form__grid">
+          <label>Template name *
+            <input id="tpl-name" type="text" maxlength="80" value="${esc(t.name)}" placeholder="e.g. Outcome letter" />
+          </label>
+          <label>When to use it
+            <input id="tpl-desc" type="text" maxlength="140" value="${esc(t.description)}" placeholder="A short description" />
+          </label>
+        </div>
+        <label class="task-form__check">
+          <input id="tpl-needs-patient" type="checkbox" ${t.needsPatient ? 'checked' : ''} />
+          Ask which patient this is for
+        </label>
+      </div>
+
+      <div class="tpl-editor__head">
+        <h3 class="panel__subhead">Fields the form asks for</h3>
+        <button class="btn btn--sm" data-action="tpl-add-field">＋ Add field</button>
+      </div>
+      <p class="field-row__hint">Each field becomes a placeholder. The token is the name you type inside <code>{{ }}</code> in the body.</p>
+      <div id="tpl-fields" class="tpl-fields">${fieldRows || '<p class="field-row__hint">No fields yet — the letter will only use patient details and today’s date.</p>'}</div>
+
+      <h3 class="panel__subhead">Template body</h3>
+      <textarea id="tpl-body" class="tpl-body" rows="14" spellcheck="true" placeholder="Dear {{patient.name}}, …">${esc(t.body)}</textarea>
+      <div class="tpl-tokens">
+        <span class="tpl-tokens__label">Insert:</span>
+        ${tokens}
+        ${templateContextTokens().map(([k, l]) => `<button class="tpl-token tpl-token--ctx" type="button" data-action="tpl-insert-token" data-token="${esc(k)}" title="${esc(l)}">{{${esc(k)}}}</button>`).join('')}
+      </div>`,
+    actions: [
+      { label: 'Cancel', onClick: closeModal },
+      { label: 'Preview', onClick: previewTemplateDraft },
+      { label: 'Save template', variant: 'primary', onClick: saveTemplateDraft },
+    ],
+  });
+
+  // Show/hide the options box when a field becomes a dropdown.
+  document.querySelectorAll('#tpl-fields .tpl-field__type').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const row = sel.closest('.tpl-field');
+      const opts = row && row.querySelector('.tpl-field__options');
+      if (opts) opts.hidden = sel.value !== 'select';
+    });
+  });
+  // The "show only when" rule appears as soon as a dependency field is chosen.
+  document.querySelectorAll('#tpl-fields .tpl-field__depkey').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const enc = sel.closest('.tpl-field__dep');
+      if (!enc) return;
+      const has = !!sel.value;
+      const type = enc.querySelector('.tpl-field__deptype');
+      const val = enc.querySelector('.tpl-field__depval');
+      if (type) type.hidden = !has;
+      if (val) val.hidden = !has;
+    });
+  });
+
+  // Keep an auto-generated token in step with the label, so the chip and the
+  // body never refer to a key that changes at save time.
+  document.querySelectorAll('#tpl-fields .tpl-field__key').forEach((input) => {
+    input.addEventListener('input', () => { input.dataset.auto = 'false'; });
+  });
+  document.querySelectorAll('#tpl-fields .tpl-field__label').forEach((input) => {
+    input.addEventListener('input', () => {
+      const row = input.closest('.tpl-field');
+      const keyInput = row && row.querySelector('.tpl-field__key');
+      if (!keyInput || keyInput.dataset.auto !== 'true') return;
+      const prev = keyInput.value;
+      const next = normaliseTemplateKey(input.value);
+      if (next === prev) return;
+      keyInput.value = next;
+      row.dataset.key = next;
+      const remove = row.querySelector('.tpl-field__remove');
+      if (remove) remove.dataset.key = next;
+      const chip = document.querySelector(`.tpl-token[data-field-key="${prev}"]`);
+      if (chip) {
+        chip.dataset.fieldKey = next;
+        chip.dataset.token = next;
+        chip.textContent = `{{${next}}}`;
+      }
+    });
+  });
+  const focusEl = focusId ? document.getElementById(focusId) : $('#tpl-name');
+  if (focusEl) focusEl.focus();
+}
+
+/** Read the editor back into a plain template-shaped object. */
+function readTemplateDraft() {
+  const fields = [...document.querySelectorAll('#tpl-fields .tpl-field')].map((row) => {
+    const label = row.querySelector('.tpl-field__label').value.trim();
+    let rawKey = row.querySelector('.tpl-field__key').value;
+    // A freshly added field keeps "field1"-style key; once it has a label,
+    // derive the obvious token so the body reads {{sessionType}}, not {{field1}}.
+    if (/^field\d*$/.test(rawKey) && label) rawKey = label;
+    // One choice per line; "Label | sentence" keeps a short form label and a
+    // long letter value. Label and value stay as stored objects.
+    const options = (row.querySelector('.tpl-field__options').value || '')
+      .split('\n').map((line) => line.trim()).filter(Boolean)
+      .map((line) => {
+        const cut = line.indexOf('|');
+        if (cut < 0) return { label: line, value: line };
+        return { label: line.slice(0, cut).trim() || line.slice(cut + 1).trim(), value: line.slice(cut + 1).trim() || line.slice(0, cut).trim() };
+      });
+    // Optional visibility rule drawn from an earlier field.
+    const depField = row.querySelector('.tpl-field__depkey');
+    const dep = depField && depField.value ? {
+      key: depField.value,
+      type: row.querySelector('.tpl-field__deptype').value || 'equals',
+      value: (row.querySelector('.tpl-field__depval').value || '').trim(),
+    } : null;
+    return {
+      key: normaliseTemplateKey(rawKey),
+      label,
+      type: row.querySelector('.tpl-field__type').value,
+      options,
+      required: row.querySelector('.tpl-field__req input').checked,
+      ...(dep ? { dep } : {}),
+      ...(row.dataset.default ? { defaultValue: row.dataset.default } : {}),
+    };
+  });
+  // Keys must be unique or later fields overwrite earlier answers.
+  const seen = new Set();
+  for (const field of fields) {
+    let key = field.key;
+    let n = 2;
+    while (seen.has(key)) key = field.key + n++;
+    field.key = key;
+    seen.add(key);
+  }
+  return {
+    name: ($('#tpl-name') || {}).value.trim() || '',
+    description: ($('#tpl-desc') || {}).value.trim() || '',
+    icon: (editingTemplateId && (findTemplate(editingTemplateId) || {}).icon) || 'file',
+    needsPatient: !!($('#tpl-needs-patient') || {}).checked,
+    fields,
+    body: ($('#tpl-body') || {}).value || '',
+  };
+}
+
+function saveTemplateDraft() {
+  const draft = readTemplateDraft();
+  if (!draft.name) { toast('Give the template a name.', 'error'); const el = $('#tpl-name'); if (el) el.focus(); return; }
+  if (!draft.body.trim()) { toast('The template body is empty.', 'error'); const el = $('#tpl-body'); if (el) el.focus(); return; }
+  const blank = draft.fields.findIndex((f) => !f.label);
+  if (blank >= 0) {
+    toast('Every field needs a label.', 'error');
+    const el = document.getElementById(`tpl-field-label-${blank}`);
+    if (el) el.focus();
+    return;
+  }
+
+  if (editingTemplateId) {
+    const existing = findTemplate(editingTemplateId);
+    if (existing) {
+      Object.assign(existing, {
+        name: draft.name, description: draft.description, needsPatient: draft.needsPatient,
+        fields: draft.fields, body: draft.body,
+      });
+    }
+  } else {
+    state.templates.push({ templateId: uuid(), ...draft });
+  }
+  save().then(closeModal);
+  toast(editingTemplateId ? 'Template saved.' : 'Template created.', 'success');
+}
+
+function previewTemplateDraft() {
+  const draft = readTemplateDraft();
+  if (!draft.body.trim()) { toast('Write a template body first.', 'error'); return; }
+  const sample = {};
+  for (const field of draft.fields) {
+    if (field.type === 'date') sample[field.key] = todayISO();
+    else if (field.type === 'select') {
+      // Sample the value a choice would paste, so the preview shows the long form.
+      const first = templateOptions(field).find((o) => o.value);
+      sample[field.key] = first ? first.value : 'Example';
+    }
+    else sample[field.key] = field.type === 'textarea'
+      ? `Sample text for “${field.label}”. A second line shows how paragraphs sit in the finished letter.`
+      : `Sample ${field.label.toLowerCase() || 'value'}`;
+  }
+  const patient = state.patients.find((p) => p.name) || null;
+  const ctx = templateContext(draft, patient, sample);
+  const filled = applyTemplate(draft.body, ctx).trim();
+  const unknown = templateUnknownTokens(draft);
+  openModal({
+    title: `Preview — ${draft.name || 'Untitled template'}`,
+    wide: true,
+    body: `
+      <p class="modal__hint">Preview with sample answers${patient ? ` and the first patient on record (${esc(patient.name)})` : ''}. Bold, italics and bullets appear exactly as they will when copied.</p>
+      ${unknown.length ? `<p class="tpl-warning">Unknown placeholders: ${unknown.map((k) => `<code>{{${esc(k)}}}</code>`).join(', ')}. They will be left blank.</p>` : ''}
+      <article class="letter-preview">${templateToHtml(filled)}</article>`,
+    actions: [
+      { label: 'Back to editor', onClick: () => openTemplateEditor(editingTemplateId, draft) },
+    ],
+  });
+}
+
+/** Insert a {{token}} at the caret in the template body. */
+function insertTemplateToken(token) {
+  const ta = $('#tpl-body');
+  if (!ta || !token) return;
+  const snippet = `{{${token}}}`;
+  const start = typeof ta.selectionStart === 'number' ? ta.selectionStart : ta.value.length;
+  const end = typeof ta.selectionEnd === 'number' ? ta.selectionEnd : start;
+  ta.value = ta.value.slice(0, start) + snippet + ta.value.slice(end);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = start + snippet.length;
+}
+
+/** Settings list of templates. */
+function templateSettingsHTML() {
+  const list = state.templates || [];
+  return `
+    <div class="panel">
+      <div class="tpl-settings__head">
+        <div>
+          <h2 class="panel__title">Letter templates</h2>
+          <p class="field-row__hint">Build a document from your own fields, then copy the finished letter — formatted text and all. Nothing generated is stored.</p>
+        </div>
+        <div class="btn-row">
+          <button class="btn" data-action="import-template-form">Import Obsidian form…</button>
+          <button class="btn" data-action="new-template">＋ New template</button>
+        </div>
+      </div>
+      ${list.length ? `<ul class="tpl-list">${list.map((t) => `
+        <li class="tpl-item">
+          <span class="tpl-item__icon">${icon(t.icon || 'file')}</span>
+          <span class="tpl-item__text">
+            <span class="tpl-item__name">${esc(t.name)}</span>
+            <span class="tpl-item__desc">${esc(t.description || `${(t.fields || []).length} field${(t.fields || []).length === 1 ? '' : 's'}`)}</span>
+          </span>
+          <span class="tpl-item__actions">
+            <button class="btn btn--sm" data-action="run-template" data-id="${esc(t.templateId)}">Use</button>
+            <button class="btn btn--sm btn--icon" data-action="edit-template" data-id="${esc(t.templateId)}" aria-label="Edit ${esc(t.name)}" title="Edit">${icon('edit')}</button>
+            <button class="btn btn--sm btn--icon" data-action="duplicate-template" data-id="${esc(t.templateId)}" aria-label="Duplicate ${esc(t.name)}" title="Duplicate">${icon('copy')}</button>
+            <button class="btn btn--sm btn--icon" data-action="delete-template" data-id="${esc(t.templateId)}" aria-label="Delete ${esc(t.name)}" title="Delete">${icon('trash')}</button>
+          </span>
+        </li>`).join('')}</ul>`
+        : '<p class="field-row__hint">No templates. Create one, or restore the built-in set.</p>'}
+      <div class="btn-row" style="margin-top:var(--space-3)">
+        <button class="btn btn--sm" data-action="restore-templates">Restore built-in templates</button>
+      </div>
+
+      <h3 class="panel__subhead" style="margin-top:var(--space-5)">Your letterhead</h3>
+      <p class="field-row__hint">Fills <code>{{letterhead.clinic}}</code>, <code>{{letterhead.clinician}}</code> and <code>{{letterhead.role}}</code> in every letter.</p>
+      <div class="task-form" style="margin-top:var(--space-3)"><div class="task-form__grid">
+        <label>Clinic / service
+          <input type="text" data-action="set-letterhead" data-key="clinic" value="${esc(state.settings.letterhead.clinic || '')}" placeholder="e.g. Riverside Talking Therapies" />
+        </label>
+        <label>Your name
+          <input type="text" data-action="set-letterhead" data-key="clinician" value="${esc(state.settings.letterhead.clinician || '')}" placeholder="e.g. Sam Taylor" />
+        </label>
+        <label>Your role
+          <input type="text" data-action="set-letterhead" data-key="role" value="${esc(state.settings.letterhead.role || '')}" placeholder="e.g. Psychological Wellbeing Practitioner" />
+        </label>
+      </div></div>
+    </div>`;
+}
+
+/* ---- Importing an Obsidian Modal Forms form ------------------------ */
+
+/**
+ * Build Caseload templates from a Modal Forms export (Forms.json) and, if
+ * given, the Templater letter that fills it. Field types are translated:
+ *   select {label,value} options → dropdown with "short label, long sentence";
+ *   condition {dependencyName, type, value} → show/hide rule for the field.
+ * result.get("Field") placeholders in the letter become {{tokens}}.
+ */
+function convertModalFormImport(formText, letterText) {
+  let json;
+  try {
+    json = JSON.parse(formText);
+  } catch (err) {
+    throw new Error('That file is not valid JSON.');
+  }
+  const defs = Array.isArray(json) ? json : (json && json.formDefinitions) || [];
+  if (!defs.length) throw new Error('No formDefinitions found in that file.');
+
+  const notices = [];
+  const templates = defs.map((def, defIndex) => {
+    const usedKeys = new Set();
+    const namesByKey = new Map();   // original Modal Forms name → {{token}}
+    const fields = [];
+    const addField = (field, originalName) => {
+      // Unique keys, the same way the template editor does it.
+      let key = field.key;
+      let n = 2;
+      while (usedKeys.has(key)) key = field.key + n++;
+      field.key = key;
+      usedKeys.add(key);
+      if (originalName && !namesByKey.has(originalName)) namesByKey.set(originalName, key);
+      fields.push(field);
+    };
+
+    for (const f of (def.fields || [])) {
+      const input = f.input || {};
+      const name = String(f.name || '').trim();
+      const kind = input.type === 'select' && input.source === 'fixed' ? 'select'
+        : input.type === 'textarea' ? 'textarea'
+        : (input.type === 'number' || input.type === 'slider' || input.type === 'counter') ? 'number'
+        : (input.type === 'date' || input.type === 'datePicker' || input.type === 'datePickerV2') ? 'date'
+        : 'text';
+      const options = kind === 'select'
+        ? (input.options || []).filter(Boolean).map((o) => ({
+            label: String(o.label ?? o.value ?? o),
+            value: String(o.value ?? o.label ?? o),
+          }))
+        : [];
+      const cond = f.condition || null;
+      if (cond && cond.dependencyName && !['isExactly', 'contains'].includes(String(cond.type))) {
+        notices.push(`“${name}”: condition “${cond.type}” is treated as “answer is exactly”.`);
+      }
+      addField({
+        key: normaliseTemplateKey(name || `field${fields.length + 1}`),
+        label: String(f.label || name || '').trim(),
+        type: kind,
+        options,
+        required: !!f.isRequired,
+        ...(cond && cond.dependencyName ? {
+          dep: {
+            key: String(cond.dependencyName).trim(),   // original name; resolved below
+            type: cond.type === 'contains' ? 'contains' : 'equals',
+            value: String(cond.value ?? ''),
+          },
+        } : {}),
+      }, name);
+    }
+
+    // Point each rule at the final (possibly renamed) key of its dependency,
+    // so a name like "Medication?" resolves to the same token the fields use.
+    for (const f of fields) {
+      if (!f.dep) continue;
+      const mapped = namesByKey.get(f.dep.key);
+      if (mapped && mapped !== f.dep.key) f.dep.key = mapped;
+    }
+
+    let body = '';
+    if (letterText && defIndex === 0) body = templaterBodyFromLetter(letterText, namesByKey, (n) => {
+      // A placeholder with no matching field becomes a plain text field, so the
+      // letter still fills in rather than silencing a gap.
+      const key = normaliseTemplateKey(n);
+      if (!usedKeys.has(key)) {
+        addField({ key, label: n, type: 'text', options: [], required: false }, n);
+        notices.push(`“${n}” is in the letter but not the form — added as a text field.`);
+      }
+      return namesByKey.get(n);
+    });
+    else {
+      // No letter supplied: start from a simple labelled summary the user can
+      // restructure — every field on its own line.
+      body = fields.map((f) => `**${f.label || f.key}**\n\n{{${f.key}}}`).join('\n\n');
+    }
+
+    return {
+      templateId: uuid(),
+      name: (def.title || def.name || 'Imported form').trim(),
+      description: `Imported from Obsidian Modal Forms · ${fields.length} field${fields.length === 1 ? '' : 's'}.`,
+      icon: 'file',
+      needsPatient: true,
+      fields,
+      body,
+    };
+  });
+
+  return { templates, notices };
+}
+
+/**
+ * Templater letter → template body. Strips the code block, turns
+ * result.get("Name") into {{token}} (creating the field if missing) and
+ * cleans up the leftover Templater wrappers.
+ */
+function templaterBodyFromLetter(md, namesByKey, ensureField) {
+  let out = String(md || '').replace(/\r\n/g, '\n');
+  // The front-matter block (form opener) carries no output — drop it whole.
+  out = out.replace(/<%\*[\s\S]*?(?:%>|$)/g, '');
+  // Turn result.get("Name") into {{token}} — both bare and inside a Templater
+  // tag, so the wrapper pass below can strip the rest without eating tokens.
+  const tokenFor = (name) => {
+    let key = namesByKey.get(name);
+    if (!key) key = ensureField(name) || namesByKey.get(name);
+    return key ? `{{${key}}}` : null;
+  };
+  out = out.replace(/<%=?\s*result\.get\(\s*["']([^"']+)["']\s*\)\s*%>/g, (all, name) => tokenFor(name) ?? all);
+  out = out.replace(/result\.get\(\s*["']([^"']+)["']\s*\)/g, (all, name) => tokenFor(name) ?? all);
+  // Anything else Templater left behind is noise to us.
+  out = out.replace(/<%[^%]*?%>/g, '');
+  out = out.replace(/^[\t ]*~/gm, '').replace(/\n{4,}/g, '\n\n\n');
+  return out.trim();
+}
+
+/** The import form: choose the Forms.json, optionally the letter file. */
+let templateImport = null;   // { formRaw, formName, letterRaw, letterName }
+
+function openTemplateImport() {
+  templateImport = { formRaw: null, formName: '', letterRaw: null, letterName: '' };
+  openModal({
+    title: 'Import an Obsidian form',
+    wide: true,
+    body: `
+      <p class="modal__hint">Bring a Modal Forms definition (<code>Forms.json</code>) and, optionally, the letter that fills it — a <code>.md</code> with <code>result.get("…")</code> placeholders. The form becomes the fields and choices; the letter becomes the template body.</p>
+      <div class="tpl-import">
+        <div class="tpl-import__row">
+          <button class="btn" data-action="import-form-pick">Choose Forms.json…</button>
+          <span id="tpl-import-form-label" class="tpl-import__name">No file chosen</span>
+        </div>
+        <div class="tpl-import__row">
+          <button class="btn" data-action="import-letter-pick">Choose letter .md…</button>
+          <span id="tpl-import-letter-label" class="tpl-import__name">No letter (a labelled summary is generated)</span>
+        </div>
+      </div>
+      <p class="field-row__hint" id="tpl-import-note">Dropdown choices keep their short label for the form, and paste the full sentence into the letter. Conditional questions stay conditional.</p>`,
+    actions: [
+      { label: 'Cancel', onClick: closeModal },
+      { label: 'Create template', variant: 'primary', onClick: submitTemplateImport },
+    ],
+  });
+}
+
+async function submitTemplateImport() {
+  if (!templateImport || !templateImport.formRaw) {
+    toast('Choose a Forms.json first.', 'error');
+    return;
+  }
+  let built;
+  try {
+    built = convertModalFormImport(templateImport.formRaw, templateImport.letterRaw);
+  } catch (err) {
+    toast(err.message || 'That form could not be imported.', 'error');
+    return;
+  }
+  if (!built.templates.length) { toast('That file holds no forms.', 'error'); return; }
+  state.templates.push(...built.templates);
+  await save();
+  closeModal();
+  templateImport = null;
+  toast(built.templates.length === 1
+    ? 'Template imported. Open it to check the letter body.'
+    : `${built.templates.length} templates imported.`, 'success');
+  for (const note of built.notices.slice(0, 2)) toast(note, 'info', 8000);
 }
 
 /* --------------------------------------------------------------------------
@@ -3814,6 +4936,108 @@ document.addEventListener('click', async (e) => {
       break;
     case 'open-import':
       openImportModal();
+      break;
+    case 'new-document':
+      openTemplatePicker(el.dataset.id || null);
+      break;
+    case 'manage-templates':
+      closeModal();
+      closePalette();
+      location.hash = '#/settings';
+      break;
+    case 'new-template':
+      openTemplateEditor(null);
+      break;
+    case 'import-template-form':
+      openTemplateImport();
+      break;
+    case 'import-form-pick':
+      pickFile('application/json,.json', (file) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (templateImport) { templateImport.formRaw = String(reader.result); templateImport.formName = file.name; }
+          const label = $('#tpl-import-form-label');
+          if (label) { label.textContent = file.name; label.setAttribute('data-set', ''); }
+        };
+        reader.readAsText(file);
+      });
+      break;
+    case 'import-letter-pick':
+      pickFile('.md,.markdown,.txt,text/plain,text/markdown', (file) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (templateImport) { templateImport.letterRaw = String(reader.result); templateImport.letterName = file.name; }
+          const label = $('#tpl-import-letter-label');
+          if (label) { label.textContent = file.name; label.setAttribute('data-set', ''); }
+        };
+        reader.readAsText(file);
+      });
+      break;
+    case 'edit-template':
+      openTemplateEditor(el.dataset.id);
+      break;
+    case 'duplicate-template': {
+      const src = findTemplate(el.dataset.id);
+      if (src) {
+        state.templates.push({
+          ...src,
+          templateId: uuid(),
+          name: `${src.name} (copy)`,
+          fields: (src.fields || []).map((f) => ({
+            ...f,
+            options: [...(f.options || [])],
+            dep: f.dep ? { ...f.dep } : null,
+          })),
+        });
+        await save();
+        toast('Template duplicated.', 'success');
+      }
+      break;
+    }
+    case 'delete-template': {
+      const doomed = findTemplate(el.dataset.id);
+      if (!doomed) break;
+      openModal({
+        title: `Delete “${doomed.name}”?`,
+        body: '<p>This removes the template from this device. Letters you have already copied are unaffected.</p>',
+        actions: [
+          { label: 'Cancel', onClick: closeModal },
+          { label: 'Delete template', variant: 'danger', onClick: async () => {
+            state.templates = state.templates.filter((t) => t.templateId !== doomed.templateId);
+            await save();
+            closeModal();
+            toast('Template deleted.');
+          } },
+        ],
+      });
+      break;
+    }
+    case 'restore-templates': {
+      const have = new Set(state.templates.map((t) => t.templateId));
+      const missing = seedTemplates().filter((t) => !have.has(t.templateId));
+      if (!missing.length) { toast('The built-in templates are already there.'); break; }
+      state.templates.push(...missing);
+      await save();
+      toast('Built-in templates restored.', 'success');
+      break;
+    }
+    case 'run-template':
+      openTemplateRun(el.dataset.id, el.dataset.patient || null);
+      break;
+    case 'tpl-add-field': {
+      const draft = readTemplateDraft();
+      draft.fields.push({ key: `field${draft.fields.length + 1}`, label: '', type: 'select', options: [], dep: null, required: false });
+      openTemplateEditor(editingTemplateId, draft, `tpl-field-label-${draft.fields.length - 1}`);
+      break;
+    }
+    case 'tpl-remove-field': {
+      const draft = readTemplateDraft();
+      draft.fields = draft.fields.filter((f) => f.key !== el.dataset.key);
+      openTemplateEditor(editingTemplateId, draft);
+      break;
+    }
+    case 'tpl-insert-token':
+      insertTemplateToken(el.dataset.token);
       break;
     case 'dropzone':
       $('#import-file').click();
@@ -4364,6 +5588,13 @@ document.addEventListener('change', async (e) => {
   if (el.dataset.action === 'set-textsize') {
     state.settings.textSize = el.value;
     await save();
+    return;
+  }
+  if (el.dataset.action === 'set-letterhead') {
+    state.settings.letterhead[el.dataset.key] = el.value.trim();
+    // Nothing on screen depends on the letterhead, so persist without a
+    // re-render (a full render would steal focus mid-form).
+    await Storage.save(state);
     return;
   }
   if (el.dataset.action === 'import-file') {
